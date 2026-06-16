@@ -20,12 +20,13 @@ from typing import List, Optional
 import numpy as np
 
 from .config import CellConfig, PackConfig, EKFConfig, DEFAULT_CELL, DEFAULT_PACK, DEFAULT_EKF
-from .cell_model import CellModel
+from .cell_model import CellModel, OCV_SOC_TABLE
 from .soc_estimator import EKFSOCEstimator
 from .soh_estimator import SOHEstimator, SOHState
 from .cell_balancer import CellBalancer, BalancingState
 from .power_limits import PowerLimitsCalculator, PowerLimits
-from .supervisor import SupervisoryController, SupervisorOutput, BMSState
+from .supervisor import SupervisoryController, SupervisorOutput, BMSState, AlertCode
+from .thermal import FanController, ThermalManagementState
 
 
 @dataclass
@@ -53,10 +54,12 @@ class BMSPackState:
     balancing: BalancingState
     power_limits: PowerLimits
     supervisor: SupervisorOutput
+    thermal: ThermalManagementState
 
     # Fault summary
     fault_active: bool
     fault_description: str
+    alerts: List[AlertCode]
 
 
 class BMSController:
@@ -87,12 +90,16 @@ class BMSController:
         ekf_cfg: EKFConfig = DEFAULT_EKF,
         soc_init=0.80,
         ambient_temp_c: float = 25.0,
+        ocv_table=None,
+        vehicle_profile=None,           # optional VehicleProfile for metadata
     ):
         self._n = n_cells
         self._cell_cfg = cell_cfg
         self._pack_cfg = pack_cfg
         self._ambient = ambient_temp_c
         self._time = 0.0
+        self._vehicle_profile = vehicle_profile
+        self._ocv_table = ocv_table if ocv_table is not None else OCV_SOC_TABLE
 
         # Per-cell initial SOC (allow slight spread to demonstrate balancing)
         if isinstance(soc_init, (int, float)):
@@ -102,7 +109,7 @@ class BMSController:
 
         # Instantiate subsystems
         self._cells: List[CellModel] = [
-            CellModel(cell_cfg, soc_init=s, temp_init=ambient_temp_c)
+            CellModel(cell_cfg, soc_init=s, temp_init=ambient_temp_c, ocv_table=self._ocv_table)
             for s in socs
         ]
         self._ekf: List[EKFSOCEstimator] = [
@@ -119,11 +126,29 @@ class BMSController:
             bypass_current_a=pack_cfg.balance_current_a,
         )
         self._power_limits = PowerLimitsCalculator(cell_cfg, n_series=n_cells)
+
+        # Determine charging stages from vehicle profile (default 2 = CC+CV)
+        _stages = getattr(vehicle_profile, 'charging_stages', 2) if vehicle_profile else 2
+        _float_v = getattr(vehicle_profile, 'chemistry', None)
+        _float_v = _float_v.float_voltage_v if _float_v else cell_cfg.v_nominal
+
         self._supervisor = SupervisoryController(
             cv_voltage_per_cell=cell_cfg.v_max,
             cv_term_current_a=abs(cell_cfg.i_cv_term),
             cc_current_a=cell_cfg.i_max_charge,
+            float_voltage_per_cell=_float_v,
+            charging_stages=_stages,
+            ov_fault_v=cell_cfg.v_max + 0.20,
+            uv_fault_v=cell_cfg.v_min - 0.10,
+            t_max_fault_c=cell_cfg.t_max_discharge,
+            t_min_fault_c=cell_cfg.t_min_discharge,
         )
+
+        # Fan / thermal controller (parameters from vehicle profile if available)
+        t_fan_on = getattr(vehicle_profile, 't_fan_on_c', 35.0) if vehicle_profile else 35.0
+        t_fan_full = getattr(vehicle_profile, 't_fan_full_c', 50.0) if vehicle_profile else 50.0
+        t_heat = getattr(vehicle_profile, 't_heat_on_c', 5.0) if vehicle_profile else 5.0
+        self._fan = FanController(t_fan_on=t_fan_on, t_fan_full=t_fan_full, t_heat_on=t_heat)
 
     # ------------------------------------------------------------------
     # Main control cycle
@@ -210,6 +235,9 @@ class BMSController:
             discharge_requested=discharge_requested,
         )
 
+        # Thermal management / fan controller
+        thermal_state = self._fan.update(temperature=t_max)
+
         fault_active = sv_out.fault_code.value != 0
         return BMSPackState(
             timestamp_s=self._time,
@@ -227,8 +255,10 @@ class BMSController:
             balancing=bal_state,
             power_limits=limits,
             supervisor=sv_out,
+            thermal=thermal_state,
             fault_active=fault_active,
             fault_description=sv_out.fault_code.name if fault_active else "NONE",
+            alerts=sv_out.alerts,
         )
 
     # ------------------------------------------------------------------

@@ -89,7 +89,7 @@ class EKFSOCEstimator:
         P_pred = F @ self._P @ F.T + self._Q
 
         # ---- Update ----
-        v_pred = ocv_from_soc(x_pred[0]) - r0 * current - x_pred[1] - x_pred[2]
+        v_pred = self._cell.ocv_for_soc(x_pred[0]) - r0 * current - x_pred[1] - x_pred[2]
         innovation = v_measured - v_pred
 
         S = float((H @ P_pred @ H.T)[0, 0]) + self._R   # scalar innovation variance

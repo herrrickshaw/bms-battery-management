@@ -21,6 +21,7 @@ Discrete-time state equations (ZOH exact):
 
 import numpy as np
 from dataclasses import dataclass, field
+from typing import Optional
 from .config import CellConfig, OCV_SOC_TABLE, DEFAULT_CELL
 
 
@@ -68,14 +69,16 @@ class CellModel:
         config: CellConfig = DEFAULT_CELL,
         soc_init: float = 0.80,
         temp_init: float = 25.0,
+        ocv_table: Optional[np.ndarray] = None,
     ):
         self.cfg = config
+        self._ocv_table = ocv_table if ocv_table is not None else OCV_SOC_TABLE
         self._soc = float(np.clip(soc_init, 0.0, 1.0))
         self._vrc1 = 0.0
         self._vrc2 = 0.0
         self._temperature = temp_init
         self._current = 0.0
-        self._v_terminal = ocv_from_soc(self._soc)
+        self._v_terminal = self.ocv_for_soc(self._soc)
 
     # ------------------------------------------------------------------
     # Public interface
@@ -118,7 +121,7 @@ class CellModel:
         new_vrc2 = alpha2 * self._vrc2 + r2 * (1.0 - alpha2) * current
 
         # Terminal voltage
-        ocv = ocv_from_soc(new_soc)
+        ocv = self.ocv_for_soc(new_soc)
         v_terminal = ocv - r0 * current - new_vrc1 - new_vrc2
 
         # Thermal model (lumped capacitance)
@@ -155,6 +158,10 @@ class CellModel:
     @property
     def temperature(self) -> float:
         return self._temperature
+
+    def ocv_for_soc(self, soc: float) -> float:
+        """Look up OCV for given SOC using this cell's chemistry table."""
+        return ocv_from_soc(soc, self._ocv_table)
 
     @property
     def state(self) -> np.ndarray:
@@ -197,8 +204,8 @@ class CellModel:
             [0.0, 0.0, alpha2],
         ])
 
-        dOCV_dSOC = docv_dsoc(self._soc)
+        dOCV_dSOC = docv_dsoc(self._soc, table=self._ocv_table)
         H = np.array([[dOCV_dSOC, -1.0, -1.0]])
 
-        ocv = ocv_from_soc(self._soc)
+        ocv = self.ocv_for_soc(self._soc)
         return F, H, ocv, r0
