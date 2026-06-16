@@ -20,7 +20,12 @@ simulation      Desktop multi-vehicle simulation runner
 from .bms_controller import BMSController, BMSPackState
 from .supervisor import BMSState, FaultCode, AlertCode
 from .config import CellConfig, PackConfig, EKFConfig, DEFAULT_CELL, DEFAULT_PACK, DEFAULT_EKF
-from .chemistries import ChemistryProfile, LFP, LEAD_ACID, NMC, CHEMISTRY_REGISTRY
+from .chemistries import (
+    ChemistryProfile,
+    LFP, LEAD_ACID, NMC,
+    NA_ION, LMFP, LTO, LI_SULFUR, SOLID_STATE,
+    CHEMISTRY_REGISTRY,
+)
 from .thermal import FanController, ThermalManagementState, FanFaultCode
 from .vehicles import (
     VehicleProfile,
@@ -44,11 +49,17 @@ __all__ = [
     "DEFAULT_CELL",
     "DEFAULT_PACK",
     "DEFAULT_EKF",
-    # Chemistries
+    # Chemistries — established
     "ChemistryProfile",
     "LFP",
     "LEAD_ACID",
     "NMC",
+    # Chemistries — emerging / next-generation
+    "NA_ION",
+    "LMFP",
+    "LTO",
+    "LI_SULFUR",
+    "SOLID_STATE",
     "CHEMISTRY_REGISTRY",
     # Thermal
     "FanController",

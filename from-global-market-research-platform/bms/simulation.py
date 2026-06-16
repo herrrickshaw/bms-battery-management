@@ -6,10 +6,16 @@ Demonstrates the BMS running across three EV classes:
   2. Retrofit 4-Wheeler  (72V Lead-Acid, IJAREEIE 2019 paper)
   3. Electric Bus        (409.6V LFP, 150 kW)
 
+Also includes:
+  4. Degradation simulation — SOH capacity/resistance fade over N cycles.
+  5. Cold-temperature simulation — performance and fault behavior at low temperatures.
+
 Run:
     python -m bms.simulation                  # all three vehicles
     python -m bms.simulation --vehicle 2W     # single vehicle
     python -m bms.simulation --plot           # save plots to reports/
+    python -m bms.simulation --degradation    # capacity fade over 300 cycles
+    python -m bms.simulation --cold           # cold temperature sweep
 """
 
 import argparse
@@ -181,6 +187,239 @@ def simulate_electric_bus(**kwargs) -> List[BMSPackState]:
 
 
 # ---------------------------------------------------------------------------
+# Degradation simulation
+# ---------------------------------------------------------------------------
+
+def simulate_degradation(
+    profile: VehicleProfile,
+    n_cycles: int = 300,
+    deg_rate: float = 0.001,
+    r0_growth_rate: float = 0.001,
+    print_every: int = 25,
+) -> List[dict]:
+    """
+    Model battery capacity fade and resistance growth over N charge/discharge cycles.
+
+    Uses an analytical degradation model (not a per-second simulation) to quickly
+    project SOH evolution across hundreds of cycles.
+
+    Parameters
+    ----------
+    profile : VehicleProfile
+        Vehicle/pack profile (determines nominal capacity and SOH thresholds).
+    n_cycles : int
+        Number of charge/discharge cycles to simulate.
+    deg_rate : float
+        Fraction of capacity lost per equivalent full cycle.
+        Default 0.001 (0.1 %/cycle ≈ 10× accelerated vs real LFP for demo visibility).
+    r0_growth_rate : float
+        Fraction of R0 increase per cycle.
+        Default 0.001 — R0 doubles by cycle ~1000.
+    print_every : int
+        Print a table row every N cycles.
+
+    Returns
+    -------
+    List of dicts with cycle, soh_capacity_pct, capacity_ah, soh_resistance_pct,
+    r0_mohm, status.
+    """
+    cell = profile.cell_config
+    q_nominal = cell.nominal_capacity_ah * profile.n_cells_parallel
+    r0_fresh_mohm = cell.r0 * 1000.0
+    eol_pct = profile.pack_cfg.soh_warning_pct
+
+    print(f"\n{'='*72}")
+    print(f"  DEGRADATION SIMULATION — {profile.name}")
+    print(f"  {n_cycles} cycles  |  deg_rate={deg_rate*100:.2f}%/cycle  "
+          f"|  Q₀={q_nominal:.0f} Ah  |  R₀={r0_fresh_mohm:.2f} mΩ")
+    print(f"  (Accelerated model: ~{round(0.02/deg_rate/100):,} real cycles = 1 simulated cycle "
+          f"for LFP if actual loss is 0.002%/cycle)")
+    print(f"{'='*72}")
+
+    headers = ["Cycle", "SOH-Q%", "Cap(Ah)", "SOH-R%", "R0(mΩ)", "dR0%", "Status"]
+    print(f"  {'|'.join(f'{h:>10}' for h in headers)}")
+    print("  " + "-" * (11 * len(headers)))
+
+    history: List[dict] = []
+
+    warn_pct = profile.pack_cfg.soh_warning_pct
+    crit_pct = profile.pack_cfg.soh_critical_pct
+
+    for cycle in range(1, n_cycles + 1):
+        # Capacity fade: linear (Wöhler-equivalent simplified model)
+        soh_q = max(0.0, 100.0 * (1.0 - deg_rate * cycle))
+        q_usable = q_nominal * soh_q / 100.0
+
+        # Resistance growth: empirical power-law approximation
+        r0_aged = r0_fresh_mohm * (1.0 + r0_growth_rate * cycle)
+        soh_r = min(100.0, r0_fresh_mohm / r0_aged * 100.0)
+        dr0_pct = (r0_aged - r0_fresh_mohm) / r0_fresh_mohm * 100.0
+
+        if cycle == 1 or cycle % print_every == 0 or cycle == n_cycles:
+            if soh_q < crit_pct:
+                status = "CRITICAL"
+            elif soh_q < warn_pct:
+                status = "WARNING"
+            else:
+                status = "OK"
+
+            cols = [
+                f"{cycle:>10d}",
+                f"{soh_q:>10.1f}",
+                f"{q_usable:>10.1f}",
+                f"{soh_r:>10.1f}",
+                f"{r0_aged:>10.2f}",
+                f"{dr0_pct:>10.1f}",
+                f"{status:>10}",
+            ]
+            print("  " + "|".join(cols))
+            history.append({
+                "cycle": cycle,
+                "soh_capacity_pct": round(soh_q, 2),
+                "capacity_ah": round(q_usable, 2),
+                "soh_resistance_pct": round(soh_r, 2),
+                "r0_mohm": round(r0_aged, 3),
+                "status": status,
+            })
+
+    # End-of-life projections
+    eol_cycle = int((100.0 - eol_pct) / (deg_rate * 100.0)) if deg_rate > 0 else 99999
+    print(f"\n  Capacity model  : SOH_Q = 100% − {deg_rate*100:.3f}% × N")
+    print(f"  Resistance model: R0_N  = R0_fresh × (1 + {r0_growth_rate*100:.3f}% × N)")
+    print(f"  EOL at SOH={eol_pct}% : ~{eol_cycle:,} cycles")
+    print(f"  Final state (N={n_cycles}): SOH={max(0.0, 100-deg_rate*n_cycles*100):.1f}%  "
+          f"R0={r0_fresh_mohm*(1+r0_growth_rate*n_cycles):.2f} mΩ\n")
+
+    return history
+
+
+# ---------------------------------------------------------------------------
+# Cold-temperature simulation
+# ---------------------------------------------------------------------------
+
+def simulate_cold_temperature(
+    profile: VehicleProfile,
+    ambient_temps_c: List[float] = None,
+    discharge_current: float = None,
+    max_discharge_s: int = 1800,
+    soc_init: float = 0.80,
+) -> dict:
+    """
+    Compare discharge performance and fault behavior at different ambient temperatures.
+
+    Shows three key cold-temperature effects:
+    1. Reduced power limits (PowerLimitsCalculator blocks charge/discharge below t_min).
+    2. Increased cell resistance at low temperatures (cell model thermal derating).
+    3. BMS fault when temperature is below t_min_discharge (UNDER_TEMPERATURE).
+
+    Parameters
+    ----------
+    profile : VehicleProfile
+        Pack to test.
+    ambient_temps_c : list[float]
+        Ambient temperatures to sweep (°C).  Default: [25, 5, -10, -20, -30].
+    discharge_current : float
+        Pack discharge current [A].  Default: 30% of max discharge current.
+    max_discharge_s : int
+        Maximum simulation duration per temperature [s].
+    soc_init : float
+        Initial SOC for all runs.
+
+    Returns
+    -------
+    dict  keyed by ambient temperature.
+    """
+    if ambient_temps_c is None:
+        ambient_temps_c = [25.0, 5.0, -10.0, -20.0, -30.0]
+    if discharge_current is None:
+        discharge_current = profile.cell_config.i_max_discharge * profile.n_cells_parallel * 0.30
+
+    cell = profile.cell_config
+    t_min_dis = cell.t_min_discharge
+    t_min_chg = cell.t_min_charge
+
+    print(f"\n{'='*80}")
+    print(f"  COLD TEMPERATURE SIMULATION — {profile.name}")
+    print(f"  Chemistry: {profile.chemistry.symbol}  |  I_discharge={discharge_current:.0f} A  |  SOC_init={soc_init*100:.0f}%")
+    print(f"  t_min_discharge={t_min_dis}°C  |  t_min_charge={t_min_chg}°C")
+    print(f"{'='*80}")
+
+    headers = ["T_amb(°C)", "T_start(°C)", "T_peak(°C)", "SOC_f%", "Ah_out",
+               "DchgBlocked", "ChgBlocked", "Fault"]
+    print(f"  {'|'.join(f'{h:>11}' for h in headers)}")
+    print("  " + "-" * (12 * len(headers)))
+
+    results = {}
+
+    for t_amb in ambient_temps_c:
+        bms = make_bms_controller(profile, soc_init=soc_init, ambient_temp_c=t_amb)
+        t_start = t_amb
+        t_peak = t_amb
+        fault_str = "-"
+        ah_out = 0.0
+        soc_final = soc_init
+        dis_blocked = False
+        chg_blocked = False
+
+        for tick in range(max_discharge_s):
+            state = bms.step(
+                current=discharge_current, dt=1.0,
+                discharge_requested=True,
+            )
+            t_peak = max(t_peak, state.pack_temp_max_c)
+
+            # Check power limits at first discharging step
+            if tick == 7:  # after INIT+PRECHARGE settle
+                if state.power_limits.i_max_discharge < 1.0:
+                    dis_blocked = True
+                if state.power_limits.i_max_charge > -1.0:
+                    chg_blocked = True
+
+            if state.fault_active:
+                fault_str = state.fault_description
+                soc_final = state.pack_soc_mean
+                ah_out += discharge_current / 3600.0
+                break
+
+            if state.pack_soc_mean <= 0.05:
+                soc_final = state.pack_soc_mean
+                ah_out += discharge_current / 3600.0
+                break
+
+            soc_final = state.pack_soc_mean
+            ah_out += discharge_current / 3600.0
+
+        cols = [
+            f"{t_amb:>11.1f}",
+            f"{t_start:>11.1f}",
+            f"{t_peak:>11.1f}",
+            f"{soc_final*100:>11.1f}",
+            f"{ah_out:>11.1f}",
+            f"{'YES' if dis_blocked else 'no':>11}",
+            f"{'YES' if chg_blocked else 'no':>11}",
+            f"{fault_str:>11}",
+        ]
+        print("  " + "|".join(cols))
+
+        results[t_amb] = {
+            "t_amb_c": t_amb,
+            "t_peak_c": round(t_peak, 1),
+            "soc_final": round(soc_final, 3),
+            "ah_out": round(ah_out, 1),
+            "discharge_blocked": dis_blocked,
+            "charge_blocked": chg_blocked,
+            "fault": fault_str,
+        }
+
+    print(f"\n  Note: BMS faults at cell T < {t_min_dis}°C (discharge) / T < {t_min_chg}°C (charge).")
+    print(f"  'DchgBlocked': PowerLimits sets i_max_discharge=0 at t_min_discharge threshold.")
+    print(f"  'ChgBlocked' : PowerLimits sets i_max_charge=0 at t_min_charge threshold.")
+    print(f"  Resistance increases ~0.5%/°C below t_nominal={cell.t_nominal}°C → more voltage sag.\n")
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Comparison summary table
 # ---------------------------------------------------------------------------
 
@@ -213,6 +452,14 @@ def print_comparison_table():
     Thermal         : PWM fan controller; heater below T_min
     Protection      : OV / UV / OC / OT / isolation fault → contactor open
     Alerts          : Driver warnings (low SOC, high temp, cell imbalance)
+
+  Supported chemistries (bms.chemistries):
+    Established : LFP · Lead-Acid (PbA) · NMC
+    Emerging    : Na-Ion · LMFP · LTO · Li-Sulfur · Solid-State NMC
+
+  Lifecycle simulations (--degradation / --cold):
+    Degradation : Capacity fade + R0 growth model over N cycles (Wöhler model)
+    Cold temp   : Discharge performance and BMS fault sweep from +25°C to −30°C
 """)
 
 
@@ -283,9 +530,25 @@ def main():
     parser.add_argument("--vehicle", choices=list(VEHICLE_MAP.keys()),
                         help="Run only this vehicle class (default: all)")
     parser.add_argument("--plot", action="store_true", help="Save comparison plot")
+    parser.add_argument("--degradation", action="store_true",
+                        help="Run degradation simulation (capacity/resistance fade over 300 cycles)")
+    parser.add_argument("--cold", action="store_true",
+                        help="Run cold-temperature discharge sweep (+25 to −30°C)")
     args = parser.parse_args()
 
     print_comparison_table()
+
+    if args.degradation:
+        # Show degradation for 2-wheeler (fast, readable output) and bus (large pack)
+        simulate_degradation(TWO_WHEELER, n_cycles=300, deg_rate=0.001)
+        simulate_degradation(ELECTRIC_BUS, n_cycles=300, deg_rate=0.0005)
+        return
+
+    if args.cold:
+        # Compare cold performance for LFP 2-wheeler and note Na-Ion advantage
+        simulate_cold_temperature(TWO_WHEELER)
+        simulate_cold_temperature(ELECTRIC_BUS)
+        return
 
     if args.vehicle:
         VEHICLE_MAP[args.vehicle]()
