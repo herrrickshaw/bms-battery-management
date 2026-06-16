@@ -28,13 +28,18 @@ from typing import List
 
 from .bms_controller import BMSController, BMSPackState
 from .vehicles import (
-    TWO_WHEELER, FOUR_WHEELER_RETRO, FOUR_WHEELER_MODERN, ELECTRIC_BUS,
+    TWO_WHEELER, FOUR_WHEELER_RETRO, ELECTRIC_BUS,
     VehicleProfile, make_bms_controller,
 )
 from .manufacturer_profiles import (
     ATHER_450X, OLA_S1_PRO, TESLA_MODEL3_SR, BYD_HAN_EV,
     ATHER_DRIVING, OLA_DRIVING, TESLA_DRIVING, BYD_DRIVING,
     MANUFACTURER_REGISTRY, MANUFACTURER_DRIVING,
+)
+from .driving_profiles import (
+    DRIVING_PROFILES, DrivingConditions,
+    compute_stress_factors, efc_per_year,
+    annual_soh_loss_pct, months_to_eol, soh_at_month,
 )
 
 
@@ -468,12 +473,6 @@ def simulate_driving_degradation(
     -------
     dict  keyed by profile name → list of (year, soh_pct) tuples.
     """
-    from .driving_profiles import (
-        DRIVING_PROFILES, compute_stress_factors,
-        efc_per_year, annual_soh_loss_pct, months_to_eol,
-        DrivingConditions,
-    )
-
     if conditions_list is None:
         conditions_list = list(DRIVING_PROFILES.values())
 
@@ -591,10 +590,6 @@ def simulate_manufacturer_comparison(
     -------
     dict keyed by short name → {profile, driving_cond, soh_by_year, eol_months}.
     """
-    from .driving_profiles import (
-        compute_stress_factors, annual_soh_loss_pct, months_to_eol, soh_at_month,
-    )
-
     vehicles = {
         "Ather 450X":  (ATHER_450X,      ATHER_DRIVING),
         "Ola S1 Pro":  (OLA_S1_PRO,       OLA_DRIVING),

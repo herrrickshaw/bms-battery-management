@@ -22,12 +22,22 @@ documented in owner surveys, telemetry releases, and press fleet reports.
 """
 
 from dataclasses import replace as _dc_replace
-from .config import CellConfig, PackConfig
-from .chemistries import ChemistryProfile, NMC, LFP, LMFP
-from .chemistries import ChemistryProfile as _CP
+from .config import CellConfig, PackConfig, DEFAULT_EKF
+from .chemistries import ChemistryProfile, NMC, LFP
 from .vehicles import VehicleProfile
-from .config import DEFAULT_EKF
 from .driving_profiles import DrivingConditions
+
+
+def _make_chem(base: ChemistryProfile, cell: CellConfig) -> ChemistryProfile:
+    """Return a new ChemistryProfile identical to `base` except with a custom CellConfig."""
+    return ChemistryProfile(
+        name=base.name, symbol=base.symbol,
+        ocv_table=base.ocv_table, cell_config=cell,
+        self_discharge_pct_month=base.self_discharge_pct_month,
+        charge_efficiency=base.charge_efficiency,
+        float_voltage_v=base.float_voltage_v,
+        description=base.description,
+    )
 
 
 # ===========================================================================
@@ -60,15 +70,7 @@ _NMC_ATHER_CELL = _dc_replace(
     thermal_resistance_k_w=8.0,  # air-cooled: higher thermal resistance
 )
 
-_NMC_ATHER_CHEM = _CP(
-    name=NMC.name, symbol=NMC.symbol,
-    ocv_table=NMC.ocv_table,
-    cell_config=_NMC_ATHER_CELL,
-    self_discharge_pct_month=NMC.self_discharge_pct_month,
-    charge_efficiency=NMC.charge_efficiency,
-    float_voltage_v=NMC.float_voltage_v,
-    description=NMC.description,
-)
+_NMC_ATHER_CHEM = _make_chem(NMC, _NMC_ATHER_CELL)
 
 ATHER_450X = VehicleProfile(
     name="Ather 450X Gen-3 (2024)",
@@ -131,15 +133,7 @@ _LFP_OLA_CELL = _dc_replace(
     thermal_resistance_k_w=2.5,  # liquid cooling: low R
 )
 
-_LFP_OLA_CHEM = _CP(
-    name=LFP.name, symbol=LFP.symbol,
-    ocv_table=LFP.ocv_table,
-    cell_config=_LFP_OLA_CELL,
-    self_discharge_pct_month=LFP.self_discharge_pct_month,
-    charge_efficiency=LFP.charge_efficiency,
-    float_voltage_v=LFP.float_voltage_v,
-    description=LFP.description,
-)
+_LFP_OLA_CHEM = _make_chem(LFP, _LFP_OLA_CELL)
 
 OLA_S1_PRO = VehicleProfile(
     name="Ola S1 Pro Gen-2 / Bharat Cell (2024)",
@@ -202,15 +196,7 @@ _LFP_TESLA_SR_CELL = _dc_replace(
     thermal_resistance_k_w=0.15,   # excellent liquid cooling (Octovalve system)
 )
 
-_LFP_TESLA_CHEM = _CP(
-    name=LFP.name, symbol=LFP.symbol,
-    ocv_table=LFP.ocv_table,
-    cell_config=_LFP_TESLA_SR_CELL,
-    self_discharge_pct_month=LFP.self_discharge_pct_month,
-    charge_efficiency=LFP.charge_efficiency,
-    float_voltage_v=LFP.float_voltage_v,
-    description=LFP.description,
-)
+_LFP_TESLA_CHEM = _make_chem(LFP, _LFP_TESLA_SR_CELL)
 
 TESLA_MODEL3_SR = VehicleProfile(
     name="Tesla Model 3 SR LFP (India/China, 2024)",
@@ -274,15 +260,7 @@ _LFP_BYD_BLADE_CELL = _dc_replace(
     thermal_resistance_k_w=0.12,   # liquid-cooled + CTB integration
 )
 
-_LFP_BYD_CHEM = _CP(
-    name=LFP.name, symbol=LFP.symbol,
-    ocv_table=LFP.ocv_table,
-    cell_config=_LFP_BYD_BLADE_CELL,
-    self_discharge_pct_month=LFP.self_discharge_pct_month,
-    charge_efficiency=LFP.charge_efficiency,
-    float_voltage_v=LFP.float_voltage_v,
-    description=LFP.description,
-)
+_LFP_BYD_CHEM = _make_chem(LFP, _LFP_BYD_BLADE_CELL)
 
 BYD_HAN_EV = VehicleProfile(
     name="BYD Han EV Blade Battery (2024)",

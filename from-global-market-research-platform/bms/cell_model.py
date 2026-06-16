@@ -124,10 +124,12 @@ class CellModel:
         ocv = self.ocv_for_soc(new_soc)
         v_terminal = ocv - r0 * current - new_vrc1 - new_vrc2
 
-        # Thermal model (lumped capacitance)
-        p_heat = current**2 * r0 + (new_vrc1**2 / r1 if r1 > 0 else 0.0) + (new_vrc2**2 / r2 if r2 > 0 else 0.0)
-        dt_temp = (p_heat - (self._temperature - ambient_temp) / cfg.thermal_resistance_k_w) * dt / cfg.thermal_capacity_j_k
-        new_temp = self._temperature + dt_temp
+        # Thermal model: lumped capacitance (C_th · dT/dt = P_heat − (T − T_amb)/R_th)
+        p_heat = (current**2 * r0
+                  + (new_vrc1**2 / r1 if r1 > 0 else 0.0)
+                  + (new_vrc2**2 / r2 if r2 > 0 else 0.0))
+        p_cool = (self._temperature - ambient_temp) / cfg.thermal_resistance_k_w
+        new_temp = self._temperature + (p_heat - p_cool) * dt / cfg.thermal_capacity_j_k
 
         # Commit
         self._soc = new_soc
@@ -173,18 +175,15 @@ class CellModel:
     # ------------------------------------------------------------------
 
     def _param_at_temp(self):
-        """
-        Return (R0, R1, C1, R2, C2) with a simple linear temperature correction.
-        Resistance increases ~0.5 % per °C below 25 °C, decreases above.
+        """Return (R0, R1, C1, R2, C2) with linear temperature correction.
+
+        Cold increases resistance (delta_t < 0 → scale > 1); hot decreases it.
+        Scale is clamped to [0.5, ∞) so resistance never more than doubles at cold.
         """
         cfg = self.cfg
         delta_t = self._temperature - cfg.t_nominal
-        scale = 1.0 - 0.005 * delta_t       # crude derating; replace with lookup table
-        scale = max(scale, 0.5)
-        r0 = cfg.r0 * scale
-        r1 = cfg.r1 * scale
-        r2 = cfg.r2 * scale
-        return r0, r1, cfg.c1, r2, cfg.c2
+        scale = max(1.0 - 0.005 * delta_t, 0.5)
+        return cfg.r0 * scale, cfg.r1 * scale, cfg.c1, cfg.r2 * scale, cfg.c2
 
     def get_ekf_matrices(self, current: float, dt: float):
         """

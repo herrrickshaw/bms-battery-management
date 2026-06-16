@@ -35,8 +35,8 @@ Usage
     simulate_driving_degradation(TWO_WHEELER, [CITY, HIGHWAY])
 """
 
-from dataclasses import dataclass, field
-from typing import List, Tuple
+from dataclasses import dataclass
+from typing import Tuple
 import math
 
 
