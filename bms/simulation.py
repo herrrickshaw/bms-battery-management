@@ -800,6 +800,8 @@ def main():
                         help="Run driving-conditions degradation projection (10-year SOH table)")
     parser.add_argument("--manufacturers", action="store_true",
                         help="Ather / Ola / Tesla / BYD pack specs and degradation comparison")
+    parser.add_argument("--datasets", action="store_true",
+                        help="Validate BMS model against 6 Kaggle battery datasets")
     args = parser.parse_args()
 
     print_comparison_table()
@@ -822,6 +824,17 @@ def main():
 
     if args.manufacturers:
         simulate_manufacturer_comparison(simulation_years=8)
+        return
+
+    if args.datasets:
+        from .datasets import load_all_synthetic, validate_bms_model, print_validation_report
+        print("\n  Generating synthetic Kaggle dataset equivalents...")
+        datasets = load_all_synthetic()
+        print(f"  Datasets ready: {list(datasets.keys())}")
+        for name, df in datasets.items():
+            print(f"    {name:<25} {len(df):>8,} rows  {list(df.columns)}")
+        results = validate_bms_model(datasets)
+        print_validation_report(results)
         return
 
     if args.vehicle:

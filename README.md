@@ -22,12 +22,27 @@ Extracted 2026-07-13 from cross-repo contamination (this package had been accide
 | `vehicles.py` | Vehicle profile definitions |
 | `config.py` | Default cell/pack/EKF configuration constants |
 | `simulation.py` | End-to-end simulation entry point (CLI via `argparse`) |
+| `datasets/` | Kaggle-dataset validation — synthetic-equivalent generators + accuracy checks (RMSE/MAE/MAPE) against 6 public battery datasets (NASA, degradation, EV charging, RUL, BMS telemetry, distributed BMS) |
 
 ## Install
 
 ```bash
 pip install -r requirements.txt
 ```
+
+## Run
+
+```bash
+python -m bms.simulation --vehicle two_wheeler   # single vehicle
+python -m bms.simulation --degradation            # capacity/resistance fade over 300 cycles
+python -m bms.simulation --datasets               # validate against Kaggle datasets
+```
+
+`download_kaggle_datasets.sh` fetches the real Kaggle CSVs (optional —
+`--datasets` falls back to synthetic-equivalent data via
+`bms/datasets/synthetic.py` if the real files aren't present).
+`nasa-battery-life-prediction-dataset-cleaning.ipynb` is the exploratory
+notebook the NASA loader/synthetic-generator pair was derived from.
 
 ## Test
 
@@ -37,4 +52,4 @@ pytest tests/
 
 ## Related
 
-[`cell-guardian`](https://github.com/herrrickshaw/cell-guardian) (archived) shares this same core engine and additionally has a Kaggle-dataset validation module (`bms/datasets/` — loaders, synthetic-data generation, accuracy checks against 6 public battery datasets) not yet ported here.
+[`cell-guardian`](https://github.com/herrrickshaw/cell-guardian) (archived) shares the same core engine plus the original Kaggle CSVs (576MB, kept there rather than duplicated here) and a data-cleaning notebook variant. `bms/datasets/` here was ported from a stray `working-files` repo, not from cell-guardian directly, but is the same module.
