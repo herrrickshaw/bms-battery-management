@@ -1,5 +1,7 @@
 # bms-battery-management
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/herrrickshaw/bms-battery-management/blob/main/notebooks/colab_test.ipynb)
+
 Electric Vehicle Battery Management System (BMS) library — cell-level modeling, state estimation, thermal/power management, and pack-level supervision.
 
 Extracted 2026-07-13 from cross-repo contamination (this package had been accidentally committed inside an unrelated stock-screener repo).
