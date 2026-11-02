@@ -1,0 +1,11 @@
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+extend-exclude = ["*.ipynb", "from-global-market-research-platform"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E741", "E702", "E731"]  # short physics names / compact one-liners are deliberate
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
