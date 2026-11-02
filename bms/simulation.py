@@ -369,6 +369,62 @@ def simulate_degradation(
 # Cold-temperature simulation
 # ---------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class ColdCaseResult:
+    """Outcome of one constant-current discharge at a fixed ambient temperature."""
+    t_start: float       # initial cell temperature [deg C]
+    t_peak: float        # peak pack temperature [deg C]
+    soc_final: float     # mean SOC at the end [0-1]
+    ah_out: float        # charge removed [Ah]
+    dis_blocked: bool    # discharge power limit ~0 at the settle tick
+    chg_blocked: bool    # charge power limit ~0 at the settle tick
+    fault: str           # latched fault name or "-"
+
+
+def run_cold_case(
+    profile: VehicleProfile,
+    t_amb: float,
+    discharge_current: float,
+    max_discharge_s: int,
+    soc_init: float,
+) -> ColdCaseResult:
+    """Discharge ``profile`` at ``discharge_current`` [A] from ``t_amb`` [deg C] until SOC/fault/timeout."""
+    bms = make_bms_controller(profile, soc_init=soc_init, ambient_temp_c=t_amb)
+    t_peak = t_amb
+    fault_str = "-"
+    ah_out = 0.0
+    soc_final = soc_init
+    dis_blocked = False
+    chg_blocked = False
+
+    for tick in range(max_discharge_s):
+        state = bms.step(current=discharge_current, dt=1.0, discharge_requested=True)
+        t_peak = max(t_peak, state.pack_temp_max_c)
+
+        # Check power limits at first discharging step
+        if tick == COLD_SETTLE_TICK:  # after INIT+PRECHARGE settle
+            if state.power_limits.i_max_discharge < 1.0:
+                dis_blocked = True
+            if state.power_limits.i_max_charge > -1.0:
+                chg_blocked = True
+
+        if state.fault_active:
+            fault_str = state.fault_description
+            soc_final = state.pack_soc_mean
+            ah_out += discharge_current / 3600.0
+            break
+
+        if state.pack_soc_mean <= DISCHARGE_DONE_SOC:
+            soc_final = state.pack_soc_mean
+            ah_out += discharge_current / 3600.0
+            break
+
+        soc_final = state.pack_soc_mean
+        ah_out += discharge_current / 3600.0
+
+    return ColdCaseResult(t_amb, t_peak, soc_final, ah_out, dis_blocked, chg_blocked, fault_str)
+
+
 def simulate_cold_temperature(
     profile: VehicleProfile,
     ambient_temps_c: List[float] = None,
@@ -424,63 +480,27 @@ def simulate_cold_temperature(
     results = {}
 
     for t_amb in ambient_temps_c:
-        bms = make_bms_controller(profile, soc_init=soc_init, ambient_temp_c=t_amb)
-        t_start = t_amb
-        t_peak = t_amb
-        fault_str = "-"
-        ah_out = 0.0
-        soc_final = soc_init
-        dis_blocked = False
-        chg_blocked = False
-
-        for tick in range(max_discharge_s):
-            state = bms.step(
-                current=discharge_current, dt=1.0,
-                discharge_requested=True,
-            )
-            t_peak = max(t_peak, state.pack_temp_max_c)
-
-            # Check power limits at first discharging step
-            if tick == 7:  # after INIT+PRECHARGE settle
-                if state.power_limits.i_max_discharge < 1.0:
-                    dis_blocked = True
-                if state.power_limits.i_max_charge > -1.0:
-                    chg_blocked = True
-
-            if state.fault_active:
-                fault_str = state.fault_description
-                soc_final = state.pack_soc_mean
-                ah_out += discharge_current / 3600.0
-                break
-
-            if state.pack_soc_mean <= 0.05:
-                soc_final = state.pack_soc_mean
-                ah_out += discharge_current / 3600.0
-                break
-
-            soc_final = state.pack_soc_mean
-            ah_out += discharge_current / 3600.0
-
+        r = run_cold_case(profile, t_amb, discharge_current, max_discharge_s, soc_init)
         cols = [
             f"{t_amb:>11.1f}",
-            f"{t_start:>11.1f}",
-            f"{t_peak:>11.1f}",
-            f"{soc_final*100:>11.1f}",
-            f"{ah_out:>11.1f}",
-            f"{'YES' if dis_blocked else 'no':>11}",
-            f"{'YES' if chg_blocked else 'no':>11}",
-            f"{fault_str:>11}",
+            f"{r.t_start:>11.1f}",
+            f"{r.t_peak:>11.1f}",
+            f"{r.soc_final*100:>11.1f}",
+            f"{r.ah_out:>11.1f}",
+            f"{'YES' if r.dis_blocked else 'no':>11}",
+            f"{'YES' if r.chg_blocked else 'no':>11}",
+            f"{r.fault:>11}",
         ]
         print("  " + "|".join(cols))
 
         results[t_amb] = {
             "t_amb_c": t_amb,
-            "t_peak_c": round(t_peak, 1),
-            "soc_final": round(soc_final, 3),
-            "ah_out": round(ah_out, 1),
-            "discharge_blocked": dis_blocked,
-            "charge_blocked": chg_blocked,
-            "fault": fault_str,
+            "t_peak_c": round(r.t_peak, 1),
+            "soc_final": round(r.soc_final, 3),
+            "ah_out": round(r.ah_out, 1),
+            "discharge_blocked": r.dis_blocked,
+            "charge_blocked": r.chg_blocked,
+            "fault": r.fault,
         }
 
     print(f"\n  Note: BMS faults at cell T < {t_min_dis}°C (discharge) / T < {t_min_chg}°C (charge).")
