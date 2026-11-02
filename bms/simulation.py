@@ -21,10 +21,14 @@ Run:
     python -m bms.simulation --manufacturers  # Ather/Ola/Tesla/BYD comparison
 """
 
+from __future__ import annotations
+
 import argparse
 import os
+from dataclasses import dataclass
+from typing import List, Optional, Sequence
+
 import numpy as np
-from typing import List
 
 from .bms_controller import BMSController, BMSPackState
 from .vehicles import (
@@ -41,6 +45,18 @@ from .driving_profiles import (
     compute_stress_factors, efc_per_year,
     annual_soh_loss_pct, months_to_eol, soh_at_month,
 )
+
+
+# ---------------------------------------------------------------------------
+# Simulation constants
+# ---------------------------------------------------------------------------
+
+CV_TAPER_TAU_S = 1200.0       # exponential CV-phase current decay time constant [s]
+CHARGE_DONE_SOC = 0.95        # stop charging at this mean SOC [0-1]
+DISCHARGE_DONE_SOC = 0.05     # stop discharging at this mean SOC [0-1]
+MAX_BALANCE_S = 300           # maximum balancing rest [s]
+BALANCED_SPREAD_V = 0.003     # cell-voltage spread considered balanced [V]
+COLD_SETTLE_TICK = 7          # step index after INIT+PRECHARGE at which limits are sampled
 
 
 # ---------------------------------------------------------------------------
@@ -71,29 +87,16 @@ def _row(state: BMSPackState, t: float, interval: int):
     print("  " + "|".join(cols))
 
 
-def _simulate_charge_discharge(
-    profile: VehicleProfile,
-    soc_init: float = 0.20,
-    dt: float = 1.0,
-    charge_s: int = 5400,
-    discharge_s: int = 3600,
-    discharge_current: float = None,
-    print_interval: int = 600,
-) -> List[BMSPackState]:
-    """Run a CC-CV charge followed by constant-current discharge."""
-
-    # Slight SOC spread across cells to show balancing
+def _initial_socs(profile: VehicleProfile, soc_init: float, spread: float = 0.02) -> List[float]:
+    """Per-cell initial SOC with a slight linear spread so balancing is visible."""
     n = profile.n_cells_series
-    spread = 0.02
-    socs = [float(np.clip(soc_init + spread * (i / max(n - 1, 1) - 0.5), 0.0, 1.0))
+    return [float(np.clip(soc_init + spread * (i / max(n - 1, 1) - 0.5), 0.0, 1.0))
             for i in range(n)]
 
-    bms = make_bms_controller(profile, soc_init=socs, ambient_temp_c=25.0)
-    history: List[BMSPackState] = []
 
-    _header(profile)
-
-    # ---- Phase 1: CC-CV Charge ----
+def _charge_phase(bms: BMSController, profile: VehicleProfile, history: List[BMSPackState],
+                  dt: float, charge_s: int, print_interval: int) -> float:
+    """CC-CV charge until SOC >= 95 % or the CV taper ends; returns the last time stamp [s]."""
     cc_i = profile.cell_config.i_max_charge * profile.n_cells_parallel
     cv_term = abs(profile.cell_config.i_cv_term) * profile.n_cells_parallel
     in_cv = False
@@ -105,7 +108,7 @@ def _simulate_charge_discharge(
         if not in_cv:
             charge_current = cc_i
         else:
-            decay = np.exp(-(t - cv_start) / 1200.0)
+            decay = np.exp(-(t - cv_start) / CV_TAPER_TAU_S)
             charge_current = cc_i * decay
             if abs(charge_current) < cv_term:
                 break
@@ -117,31 +120,60 @@ def _simulate_charge_discharge(
         if not in_cv and max(state.cell_voltages_v) >= profile.cell_config.v_max:
             in_cv = True
             cv_start = t
-        if state.pack_soc_mean >= 0.95:
+        if state.pack_soc_mean >= CHARGE_DONE_SOC:
             break
+    return t
 
-    print(f"\n  >> Charge done  SOC={history[-1].pack_soc_mean*100:.1f}%  "
-          f"V={history[-1].pack_voltage_v:.1f}V  T={history[-1].pack_temp_max_c:.1f}°C")
 
-    # ---- Phase 2: Balancing at rest ----
-    for _ in range(min(300, charge_s)):
+def _balance_phase(bms: BMSController, history: List[BMSPackState], t: float,
+                   dt: float, charge_s: int) -> float:
+    """Rest at zero current until the cell-voltage spread is below 3 mV (max 300 s)."""
+    for _ in range(min(MAX_BALANCE_S, charge_s)):
         t += dt
         state = bms.step(current=0.0, dt=dt)
         history.append(state)
-        if state.balancing.v_spread < 0.003:
+        if state.balancing.v_spread < BALANCED_SPREAD_V:
             break
+    return t
 
-    # ---- Phase 3: CC Discharge ----
-    if discharge_current is None:
-        discharge_current = profile.cell_config.i_max_discharge * profile.n_cells_parallel * 0.5
 
-    for tick in range(discharge_s):
+def _discharge_phase(bms: BMSController, history: List[BMSPackState], t: float, dt: float,
+                     discharge_s: int, discharge_current: float, print_interval: int) -> float:
+    """Constant-current discharge until SOC <= 5 % or a fault latches."""
+    for _ in range(discharge_s):
         t += dt
         state = bms.step(current=discharge_current, dt=dt, discharge_requested=True)
         history.append(state)
         _row(state, t, print_interval)
-        if state.pack_soc_mean <= 0.05 or state.fault_active:
+        if state.pack_soc_mean <= DISCHARGE_DONE_SOC or state.fault_active:
             break
+    return t
+
+
+def _simulate_charge_discharge(
+    profile: VehicleProfile,
+    soc_init: float = 0.20,
+    dt: float = 1.0,
+    charge_s: int = 5400,
+    discharge_s: int = 3600,
+    discharge_current: Optional[float] = None,
+    print_interval: int = 600,
+) -> List[BMSPackState]:
+    """Run a CC-CV charge, a balancing rest, then a constant-current discharge (1 Hz default)."""
+    bms = make_bms_controller(profile, soc_init=_initial_socs(profile, soc_init), ambient_temp_c=25.0)
+    history: List[BMSPackState] = []
+
+    _header(profile)
+
+    t = _charge_phase(bms, profile, history, dt, charge_s, print_interval)
+    print(f"\n  >> Charge done  SOC={history[-1].pack_soc_mean*100:.1f}%  "
+          f"V={history[-1].pack_voltage_v:.1f}V  T={history[-1].pack_temp_max_c:.1f}°C")
+
+    t = _balance_phase(bms, history, t, dt, charge_s)
+
+    if discharge_current is None:
+        discharge_current = profile.cell_config.i_max_discharge * profile.n_cells_parallel * 0.5
+    _discharge_phase(bms, history, t, dt, discharge_s, discharge_current, print_interval)
 
     last = history[-1]
     print(f"\n  >> Discharge done  SOC={last.pack_soc_mean*100:.1f}%  "
