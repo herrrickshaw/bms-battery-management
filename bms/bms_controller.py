@@ -15,8 +15,10 @@ Usage:
     state = bms.step(current=50.0, dt=1.0)   # 50 A discharge, 1-second step
 """
 
-from dataclasses import dataclass, field
-from typing import List, Optional
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import List
 import numpy as np
 
 from .config import CellConfig, PackConfig, EKFConfig, DEFAULT_CELL, DEFAULT_PACK, DEFAULT_EKF
@@ -27,6 +29,17 @@ from .cell_balancer import CellBalancer, BalancingState
 from .power_limits import PowerLimitsCalculator, PowerLimits
 from .supervisor import SupervisoryController, SupervisorOutput, BMSState, AlertCode
 from .thermal import FanController, ThermalManagementState
+
+
+DEFAULT_CHARGING_STAGES = 2        # CC + CV
+DEFAULT_T_FAN_ON_C = 35.0          # fan starts [deg C]
+DEFAULT_T_FAN_FULL_C = 50.0        # fan at 100 % [deg C]
+DEFAULT_T_HEAT_ON_C = 5.0          # heater below this [deg C]
+
+
+def _profile_attr(profile, name: str, default):
+    """``profile.<name>`` if a vehicle profile was supplied, else ``default``."""
+    return getattr(profile, name, default) if profile else default
 
 
 @dataclass
@@ -127,10 +140,10 @@ class BMSController:
         )
         self._power_limits = PowerLimitsCalculator(cell_cfg, n_series=n_cells)
 
-        # Determine charging stages from vehicle profile (default 2 = CC+CV)
-        _stages = getattr(vehicle_profile, 'charging_stages', 2) if vehicle_profile else 2
-        _float_v = getattr(vehicle_profile, 'chemistry', None)
-        _float_v = _float_v.float_voltage_v if _float_v else cell_cfg.v_nominal
+        # Vehicle-profile overrides (None profile -> library defaults)
+        _stages = _profile_attr(vehicle_profile, "charging_stages", DEFAULT_CHARGING_STAGES)
+        _chem = getattr(vehicle_profile, "chemistry", None)
+        _float_v = _chem.float_voltage_v if _chem else cell_cfg.v_nominal
 
         self._supervisor = SupervisoryController(
             cv_voltage_per_cell=cell_cfg.v_max,
@@ -145,9 +158,9 @@ class BMSController:
         )
 
         # Fan / thermal controller (parameters from vehicle profile if available)
-        t_fan_on = getattr(vehicle_profile, 't_fan_on_c', 35.0) if vehicle_profile else 35.0
-        t_fan_full = getattr(vehicle_profile, 't_fan_full_c', 50.0) if vehicle_profile else 50.0
-        t_heat = getattr(vehicle_profile, 't_heat_on_c', 5.0) if vehicle_profile else 5.0
+        t_fan_on = _profile_attr(vehicle_profile, "t_fan_on_c", DEFAULT_T_FAN_ON_C)
+        t_fan_full = _profile_attr(vehicle_profile, "t_fan_full_c", DEFAULT_T_FAN_FULL_C)
+        t_heat = _profile_attr(vehicle_profile, "t_heat_on_c", DEFAULT_T_HEAT_ON_C)
         self._fan = FanController(t_fan_on=t_fan_on, t_fan_full=t_fan_full, t_heat_on=t_heat)
 
     # ------------------------------------------------------------------
@@ -275,6 +288,4 @@ class BMSController:
 
     def reset_fault(self) -> None:
         """Clear fault state and transition to IDLE (if fault is recoverable)."""
-        from .supervisor import FaultCode
-        self._supervisor._fault_code = FaultCode.NONE
-        self._supervisor._transition(BMSState.IDLE)
+        self._supervisor.clear_fault()
