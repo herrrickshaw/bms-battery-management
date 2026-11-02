@@ -100,7 +100,19 @@ def collect() -> dict:
                                       simulation_years=6)
     res["manufacturers"] = _run(_manufacturers_stripped, sim)
     res["two_wheeler_full"] = _run(sim.simulate_two_wheeler)
+    for flag in ("--degradation", "--driving", "--manufacturers", "--datasets"):
+        res[f"cli{flag}"] = _run(_cli, sim, flag)
     return res
+
+
+def _cli(sim, flag):
+    """Run the simulation CLI as ``python -m bms.simulation <flag>``."""
+    old = sys.argv
+    sys.argv = ["bms.simulation", flag]
+    try:
+        sim.main()
+    finally:
+        sys.argv = old
 
 
 def _manufacturers_stripped(sim):

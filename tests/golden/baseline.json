@@ -15,6 +15,22 @@
   "result": "9b88670f690fab8e54f73477aaa995b94f6a4feb9158544cc334a9f8bfc3cebe",
   "stdout": "b34d1e23a19ade9d0df26e5086d1eddd0ce4881c5618f8dd28f926c1c8746158"
  },
+ "cli--datasets": {
+  "result": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91",
+  "stdout": "b8825a9a48894352625162651405537b06e933b2f860613b2dab7e4ff3eaa025"
+ },
+ "cli--degradation": {
+  "result": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91",
+  "stdout": "0b1027419f7b739367bd45d04edaf0e4af2f55f60b1f570ba2f4a493782746d0"
+ },
+ "cli--driving": {
+  "result": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91",
+  "stdout": "d4b6fbb953f515aadbfc611658cce5e0f5721fa9ea80e0a1c9c937d3dfc3f32e"
+ },
+ "cli--manufacturers": {
+  "result": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91",
+  "stdout": "7b3e514b83bd3313a555a5a5035e07dcacb3d3c9d4a815b6d524011968130d16"
+ },
  "cold_2w": {
   "result": "129d070914f22f2d3de94d7ee9b9ce7bed7b813661318fe427ba28795e5784b3",
   "stdout": "ad0d26409f81b1d1dba032b136c0ee52b17346f6252efa10912057db9b3a8854"
