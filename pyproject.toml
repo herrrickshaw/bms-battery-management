@@ -9,3 +9,4 @@ ignore = ["E741", "E702", "E731"]  # short physics names / compact one-liners ar
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
