@@ -235,6 +235,54 @@ def simulate_electric_bus(**kwargs) -> List[BMSPackState]:
 # Degradation simulation
 # ---------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class DegradationPoint:
+    """One sampled cycle of the analytical fade model (unrounded values)."""
+    cycle: int
+    soh_q: float        # capacity SOH [%]
+    q_usable: float     # usable pack capacity [Ah]
+    soh_r: float        # resistance SOH [%]
+    r0_aged: float      # aged R0 [mOhm]
+    dr0_pct: float      # R0 growth vs fresh [%]
+    status: str         # OK | WARNING | CRITICAL
+
+
+def project_degradation(
+    profile: VehicleProfile,
+    n_cycles: int = 300,
+    deg_rate: float = 0.001,
+    r0_growth_rate: float = 0.001,
+    print_every: int = 25,
+) -> List[DegradationPoint]:
+    """Pure analytical capacity-fade / R0-growth projection, sampled every ``print_every`` cycles."""
+    cell = profile.cell_config
+    q_nominal = cell.nominal_capacity_ah * profile.n_cells_parallel
+    r0_fresh_mohm = cell.r0 * 1000.0
+    warn_pct = profile.pack_cfg.soh_warning_pct
+    crit_pct = profile.pack_cfg.soh_critical_pct
+
+    points: List[DegradationPoint] = []
+    for cycle in range(1, n_cycles + 1):
+        # Capacity fade: linear (Wöhler-equivalent simplified model)
+        soh_q = max(0.0, 100.0 * (1.0 - deg_rate * cycle))
+        q_usable = q_nominal * soh_q / 100.0
+
+        # Resistance growth: empirical power-law approximation
+        r0_aged = r0_fresh_mohm * (1.0 + r0_growth_rate * cycle)
+        soh_r = min(100.0, r0_fresh_mohm / r0_aged * 100.0)
+        dr0_pct = (r0_aged - r0_fresh_mohm) / r0_fresh_mohm * 100.0
+
+        if cycle == 1 or cycle % print_every == 0 or cycle == n_cycles:
+            if soh_q < crit_pct:
+                status = "CRITICAL"
+            elif soh_q < warn_pct:
+                status = "WARNING"
+            else:
+                status = "OK"
+            points.append(DegradationPoint(cycle, soh_q, q_usable, soh_r, r0_aged, dr0_pct, status))
+    return points
+
+
 def simulate_degradation(
     profile: VehicleProfile,
     n_cycles: int = 300,
@@ -286,46 +334,25 @@ def simulate_degradation(
     print("  " + "-" * (11 * len(headers)))
 
     history: List[dict] = []
-
-    warn_pct = profile.pack_cfg.soh_warning_pct
-    crit_pct = profile.pack_cfg.soh_critical_pct
-
-    for cycle in range(1, n_cycles + 1):
-        # Capacity fade: linear (Wöhler-equivalent simplified model)
-        soh_q = max(0.0, 100.0 * (1.0 - deg_rate * cycle))
-        q_usable = q_nominal * soh_q / 100.0
-
-        # Resistance growth: empirical power-law approximation
-        r0_aged = r0_fresh_mohm * (1.0 + r0_growth_rate * cycle)
-        soh_r = min(100.0, r0_fresh_mohm / r0_aged * 100.0)
-        dr0_pct = (r0_aged - r0_fresh_mohm) / r0_fresh_mohm * 100.0
-
-        if cycle == 1 or cycle % print_every == 0 or cycle == n_cycles:
-            if soh_q < crit_pct:
-                status = "CRITICAL"
-            elif soh_q < warn_pct:
-                status = "WARNING"
-            else:
-                status = "OK"
-
-            cols = [
-                f"{cycle:>10d}",
-                f"{soh_q:>10.1f}",
-                f"{q_usable:>10.1f}",
-                f"{soh_r:>10.1f}",
-                f"{r0_aged:>10.2f}",
-                f"{dr0_pct:>10.1f}",
-                f"{status:>10}",
-            ]
-            print("  " + "|".join(cols))
-            history.append({
-                "cycle": cycle,
-                "soh_capacity_pct": round(soh_q, 2),
-                "capacity_ah": round(q_usable, 2),
-                "soh_resistance_pct": round(soh_r, 2),
-                "r0_mohm": round(r0_aged, 3),
-                "status": status,
-            })
+    for pt in project_degradation(profile, n_cycles, deg_rate, r0_growth_rate, print_every):
+        cols = [
+            f"{pt.cycle:>10d}",
+            f"{pt.soh_q:>10.1f}",
+            f"{pt.q_usable:>10.1f}",
+            f"{pt.soh_r:>10.1f}",
+            f"{pt.r0_aged:>10.2f}",
+            f"{pt.dr0_pct:>10.1f}",
+            f"{pt.status:>10}",
+        ]
+        print("  " + "|".join(cols))
+        history.append({
+            "cycle": pt.cycle,
+            "soh_capacity_pct": round(pt.soh_q, 2),
+            "capacity_ah": round(pt.q_usable, 2),
+            "soh_resistance_pct": round(pt.soh_r, 2),
+            "r0_mohm": round(pt.r0_aged, 3),
+            "status": pt.status,
+        })
 
     # End-of-life projections
     eol_cycle = int((100.0 - eol_pct) / (deg_rate * 100.0)) if deg_rate > 0 else 99999
