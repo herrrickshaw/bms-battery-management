@@ -26,7 +26,7 @@ from __future__ import annotations
 import argparse
 import os
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -38,7 +38,6 @@ from .vehicles import (
 from .manufacturer_profiles import (
     ATHER_450X, OLA_S1_PRO, TESLA_MODEL3_SR, BYD_HAN_EV,
     ATHER_DRIVING, OLA_DRIVING, TESLA_DRIVING, BYD_DRIVING,
-    MANUFACTURER_REGISTRY, MANUFACTURER_DRIVING,
 )
 from .driving_profiles import (
     DRIVING_PROFILES, DrivingConditions,
@@ -504,8 +503,8 @@ def simulate_cold_temperature(
         }
 
     print(f"\n  Note: BMS faults at cell T < {t_min_dis}°C (discharge) / T < {t_min_chg}°C (charge).")
-    print(f"  'DchgBlocked': PowerLimits sets i_max_discharge=0 at t_min_discharge threshold.")
-    print(f"  'ChgBlocked' : PowerLimits sets i_max_charge=0 at t_min_charge threshold.")
+    print("  'DchgBlocked': PowerLimits sets i_max_discharge=0 at t_min_discharge threshold.")
+    print("  'ChgBlocked' : PowerLimits sets i_max_charge=0 at t_min_charge threshold.")
     print(f"  Resistance increases ~0.5%/°C below t_nominal={cell.t_nominal}°C → more voltage sag.\n")
 
     return results
@@ -514,6 +513,41 @@ def simulate_cold_temperature(
 # ---------------------------------------------------------------------------
 # Driving conditions degradation simulation
 # ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class DrivingStressRow:
+    """Stress / ageing summary for one driving profile."""
+    cond: DrivingConditions
+    stress_total: float      # combined C-rate x temperature x DoD stress factor
+    efc_per_year: float      # equivalent full cycles per year
+    annual_loss_pct: float   # SOH loss [% / year]
+    eol_months: float        # months until SOH reaches the warning threshold
+
+
+def driving_stress_rows(
+    conditions_list: Sequence[DrivingConditions],
+    warn_pct: float,
+    base_rate_per_efc: float,
+    calendar_aging_pct_year: float,
+) -> List[DrivingStressRow]:
+    """Pure stress / EOL summary, one row per driving profile."""
+    rows = []
+    for cond in conditions_list:
+        _, _, _, total = compute_stress_factors(cond)
+        rows.append(DrivingStressRow(
+            cond=cond,
+            stress_total=total,
+            efc_per_year=efc_per_year(cond),
+            annual_loss_pct=annual_soh_loss_pct(base_rate_per_efc, cond, calendar_aging_pct_year),
+            eol_months=months_to_eol(warn_pct, base_rate_per_efc, cond, calendar_aging_pct_year),
+        ))
+    return rows
+
+
+def linear_soh_pct(annual_loss_pct: float, year: float) -> float:
+    """SOH [%] after ``year`` years at a constant ``annual_loss_pct``, floored at 0."""
+    return max(0.0, 100.0 - annual_loss_pct * year)
+
 
 def simulate_driving_degradation(
     profile: VehicleProfile,
@@ -574,23 +608,21 @@ def simulate_driving_degradation(
     print("  " + "-" * 84)
 
     results = {}
-    for cond in conditions_list:
-        f_c, f_T, f_dod, total = compute_stress_factors(cond)
-        efcs = efc_per_year(cond)
-        loss = annual_soh_loss_pct(base_rate_per_efc, cond, calendar_aging_pct_year)
-        eol_m = months_to_eol(warn_pct, base_rate_per_efc, cond, calendar_aging_pct_year)
-        eol_str = f"{eol_m/12:.1f}" if eol_m < 120 * 12 else "Never"
+    for row in driving_stress_rows(conditions_list, warn_pct, base_rate_per_efc, calendar_aging_pct_year):
+        cond = row.cond
+        eol_str = f"{row.eol_months/12:.1f}" if row.eol_months < 120 * 12 else "Never"
         print(fmt.format(
             cond.name[:24],
             f"{cond.avg_discharge_c_rate:.2f}",
             f"{cond.avg_pack_temp_c:.0f}",
             f"{cond.dod_per_trip*100:.0f}%",
             f"{cond.fast_charge_fraction*100:.0f}%",
-            f"{total:.3f}×",
-            f"{efcs:.0f}",
+            f"{row.stress_total:.3f}×",
+            f"{row.efc_per_year:.0f}",
             eol_str,
         ))
-        results[cond.name] = {"annual_loss_pct": loss, "eol_months": eol_m, "soh_by_year": []}
+        results[cond.name] = {"annual_loss_pct": row.annual_loss_pct, "eol_months": row.eol_months,
+                              "soh_by_year": []}
 
     # ---- SOH-over-time table ---------------------------------------------
     print()
@@ -610,7 +642,7 @@ def simulate_driving_degradation(
         year = month / 12
         row = f"  {year:>{name_width}.1f}"
         for cond in conditions_list:
-            soh = max(0.0, 100.0 - results[cond.name]["annual_loss_pct"] * year)
+            soh = linear_soh_pct(results[cond.name]["annual_loss_pct"], year)
             results[cond.name]["soh_by_year"].append((year, round(soh, 1)))
             marker = ""
             if soh < crit_pct:
@@ -644,6 +676,20 @@ def simulate_driving_degradation(
 # ---------------------------------------------------------------------------
 # Manufacturer comparison
 # ---------------------------------------------------------------------------
+
+def manufacturer_ageing(
+    vp: VehicleProfile,
+    dc: DrivingConditions,
+    base_rate_per_efc: float,
+    calendar_aging_pct_year: float,
+) -> Tuple[float, float, float, float]:
+    """Return ``(stress_total, efc_per_year, annual_loss_pct, eol_months)`` for one vehicle."""
+    _, _, _, stress = compute_stress_factors(dc)
+    efcs = dc.trips_per_day * 365.25 * dc.dod_per_trip
+    loss = annual_soh_loss_pct(base_rate_per_efc, dc, calendar_aging_pct_year)
+    eol_m = months_to_eol(vp.pack_cfg.soh_warning_pct, base_rate_per_efc, dc, calendar_aging_pct_year)
+    return stress, efcs, loss, eol_m
+
 
 def simulate_manufacturer_comparison(
     base_rate_per_efc: float = 1e-4,
@@ -711,10 +757,7 @@ def simulate_manufacturer_comparison(
 
     results = {}
     for name, (vp, dc) in vehicles.items():
-        _, _, _, stress = compute_stress_factors(dc)
-        efcs = dc.trips_per_day * 365.25 * dc.dod_per_trip
-        loss = annual_soh_loss_pct(base_rate_per_efc, dc, calendar_aging_pct_year)
-        eol_m = months_to_eol(vp.pack_cfg.soh_warning_pct, base_rate_per_efc, dc, calendar_aging_pct_year)
+        stress, efcs, loss, eol_m = manufacturer_ageing(vp, dc, base_rate_per_efc, calendar_aging_pct_year)
         eol_str = f"{eol_m/12:.1f}" if eol_m < 200 * 12 else "∞"
         print(fmt2.format(
             name, dc.description[:32],
@@ -749,12 +792,12 @@ def simulate_manufacturer_comparison(
             row += f"  {cell:>{col}}"
         print(row)
 
-    print(f"\n  ~ = SOH below warning threshold   ! = below critical threshold")
-    print(f"\n  Key BMS differentiators:")
-    print(f"    Ather 450X  : Cloud-connected ADS; warp/eco modes; air-cooled (hot pack)")
-    print(f"    Ola S1 Pro  : MoveOS 4; liquid cooling reduces pack temp vs Ather")
-    print(f"    Tesla M3 SR : Octovalve thermal; Supercharger V3 (2.8C); trip planning")
-    print(f"    BYD Han EV  : Cell-to-Body (CTB); nail-test safe; 120 kW DC; heat pump\n")
+    print("\n  ~ = SOH below warning threshold   ! = below critical threshold")
+    print("\n  Key BMS differentiators:")
+    print("    Ather 450X  : Cloud-connected ADS; warp/eco modes; air-cooled (hot pack)")
+    print("    Ola S1 Pro  : MoveOS 4; liquid cooling reduces pack temp vs Ather")
+    print("    Tesla M3 SR : Octovalve thermal; Supercharger V3 (2.8C); trip planning")
+    print("    BYD Han EV  : Cell-to-Body (CTB); nail-test safe; 120 kW DC; heat pump\n")
 
     return results
 
@@ -866,7 +909,19 @@ VEHICLE_MAP = {
 }
 
 
-def main():
+def _run_datasets_validation() -> None:
+    """Validate the BMS model against the (synthetic-equivalent) Kaggle datasets."""
+    from .datasets import load_all_synthetic, validate_bms_model, print_validation_report
+    print("\n  Generating synthetic Kaggle dataset equivalents...")
+    datasets = load_all_synthetic()
+    print(f"  Datasets ready: {list(datasets.keys())}")
+    for name, df in datasets.items():
+        print(f"    {name:<25} {len(df):>8,} rows  {list(df.columns)}")
+    results = validate_bms_model(datasets)
+    print_validation_report(results)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="BMS multi-vehicle simulation")
     parser.add_argument("--vehicle", choices=list(VEHICLE_MAP.keys()),
                         help="Run only this vehicle class (default: all)")
@@ -881,7 +936,7 @@ def main():
                         help="Ather / Ola / Tesla / BYD pack specs and degradation comparison")
     parser.add_argument("--datasets", action="store_true",
                         help="Validate BMS model against 6 Kaggle battery datasets")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     print_comparison_table()
 
@@ -906,14 +961,7 @@ def main():
         return
 
     if args.datasets:
-        from .datasets import load_all_synthetic, validate_bms_model, print_validation_report
-        print("\n  Generating synthetic Kaggle dataset equivalents...")
-        datasets = load_all_synthetic()
-        print(f"  Datasets ready: {list(datasets.keys())}")
-        for name, df in datasets.items():
-            print(f"    {name:<25} {len(df):>8,} rows  {list(df.columns)}")
-        results = validate_bms_model(datasets)
-        print_validation_report(results)
+        _run_datasets_validation()
         return
 
     if args.vehicle:
