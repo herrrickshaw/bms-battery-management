@@ -15,6 +15,10 @@
   "result": "9b88670f690fab8e54f73477aaa995b94f6a4feb9158544cc334a9f8bfc3cebe",
   "stdout": "b34d1e23a19ade9d0df26e5086d1eddd0ce4881c5618f8dd28f926c1c8746158"
  },
+ "cli--cold": {
+  "result": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91",
+  "stdout": "44440cec246a5e2d7728cb1fd29e9065928841b4ede5c189765f9ce885bcf705"
+ },
  "cli--datasets": {
   "result": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91",
   "stdout": "b8825a9a48894352625162651405537b06e933b2f860613b2dab7e4ff3eaa025"
@@ -30,6 +34,18 @@
  "cli--manufacturers": {
   "result": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91",
   "stdout": "7b3e514b83bd3313a555a5a5035e07dcacb3d3c9d4a815b6d524011968130d16"
+ },
+ "cli--vehicle-2W": {
+  "result": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91",
+  "stdout": "d0981d24e0ece054e7531f933fb01d5c27989dc519085a41a7108da8ad8a5c6c"
+ },
+ "cli--vehicle-4W_RETRO": {
+  "result": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91",
+  "stdout": "1e17efee7856cbd189d3ff930b82df344dce7cea65686fe2eeef5169d51012da"
+ },
+ "cli--vehicle-BUS": {
+  "result": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91",
+  "stdout": "3d33b467d9338fb6061cb05a8ef423dfa768afede8c6e4d58b00d07f4139821e"
  },
  "cold_2w": {
   "result": "129d070914f22f2d3de94d7ee9b9ce7bed7b813661318fe427ba28795e5784b3",
