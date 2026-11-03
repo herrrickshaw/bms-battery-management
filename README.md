@@ -38,14 +38,14 @@ Other flags: `--degradation`, `--cold`, `--driving`, `--manufacturers`, `--datas
 | Supervisory state machine (CC-CV-float, faults, alerts) | `supervisor.py` | contactor / enable flags |
 | Fan / heater PWM | `thermal.py` | `ThermalManagementState` |
 
-Presets live in `vehicles.py` and `manufacturer_profiles.py` (both build chemistries via `with_cell_config`). `simulation.py` keeps computation in pure functions (`project_degradation`, `run_cold_case`, `driving_stress_rows`, `manufacturer_ageing`) and prints tables on top.
+Presets live in `vehicles.py` and `manufacturer_profiles.py` (both build chemistries via `with_cell_config`). `simulation/` (a package; `python -m bms.simulation` is unchanged) keeps computation in pure functions (`project_degradation`, `run_cold_case`, `driving_stress_rows`, `manufacturer_ageing`) and prints tables on top.
 
 ## Repository layout
 | Path | Purpose |
 |---|---|
 | `bms/` | The library: cell model, estimators, balancer, thermal, power limits, supervisor, controller |
 | `bms/vehicles.py`, `bms/manufacturer_profiles.py`, `bms/driving_profiles.py` | Vehicle presets, OEM presets, driving-stress ageing model |
-| `bms/simulation.py` | CLI (`python -m bms.simulation`) |
+| `bms/simulation/` | CLI (`python -m bms.simulation`) |
 | `bms/datasets/` | Synthetic dataset generators, loaders and accuracy validation |
 | `tests/` | Unit tests plus bit-identical characterisation tests (`tests/golden/baseline.json`) |
 | `download_kaggle_datasets.sh` | Optional: fetches the real Kaggle CSVs (needs your own Kaggle credentials) |
@@ -61,7 +61,7 @@ Presets live in `vehicles.py` and `manufacturer_profiles.py` (both build chemist
 `--datasets` runs on seeded synthetic equivalents (`bms/datasets/synthetic.py`) when the real files are absent.
 
 ## Configuration
-No environment variables. Cell, pack and EKF defaults are dataclasses in `bms/config.py`; simulation constants (CV taper time constant, SOC cut-offs) are named at the top of `bms/simulation.py`. Kaggle credentials (`~/.kaggle/kaggle.json`) are only needed for the optional download script and are never committed.
+No environment variables. Cell, pack and EKF defaults are dataclasses in `bms/config.py`; simulation constants (CV taper time constant, SOC cut-offs) are named at the top of `bms/simulation/constants.py`. Kaggle credentials (`~/.kaggle/kaggle.json`) are only needed for the optional download script and are never committed.
 
 ## Testing
 ```bash
