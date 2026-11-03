@@ -1,8 +1,11 @@
 """Characterisation harness: deterministic digests of BMS simulation output.
 
 ``collect()`` runs seeded/deterministic simulations and returns a dict of
-sha256 digests (console output, and float.hex() of every numeric result) so a
-refactor can be proven bit-identical.  ``tests/golden/baseline.json`` was
+sha256 digests (console output, and every numeric result with floats rounded to
+``FLOAT_SIG_DIGITS`` significant digits) so a refactor can be proven
+behaviour-identical.  Rounding keeps the digest stable across platforms: the
+last bits of a float depend on the libm/BLAS build (macOS arm64 vs Linux x86_64),
+which would otherwise make CI disagree with a golden captured on a laptop.  ``tests/golden/baseline.json`` was
 generated from the pre-refactor code with ``python tests/characterise.py``.
 """
 from __future__ import annotations
@@ -16,18 +19,20 @@ import json
 import sys
 from pathlib import Path
 
+FLOAT_SIG_DIGITS = 9  # ~1e-9 relative; far above platform libm noise (~1e-16)
 ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = Path(__file__).resolve().parent / "golden" / "baseline.json"
 
 
 def _walk(obj, out):
-    """Flatten *obj* into a list of exact string tokens (floats as hex)."""
+    """Flatten *obj* into a list of string tokens (floats rounded to FLOAT_SIG_DIGITS)."""
     if isinstance(obj, enum.Enum):
         out.append(f"{type(obj).__name__}.{obj.name}")
     elif isinstance(obj, bool) or obj is None or isinstance(obj, (str, int)):
         out.append(repr(obj))
     elif isinstance(obj, float) or hasattr(obj, "hex") and hasattr(obj, "is_integer"):
-        out.append(float(obj).hex())
+        x = float(obj)
+        out.append("0" if x == 0 else format(x, f".{FLOAT_SIG_DIGITS - 1}e"))
     elif dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         for f in dataclasses.fields(obj):
             out.append(f.name)

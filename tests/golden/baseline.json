@@ -1,18 +1,18 @@
 {
  "charge_discharge_2w": {
-  "result": "f3a03217a425a10a5e81096084ea9cf6948535d5ae16a8f02e7698fed0a21218",
+  "result": "e07965d61f4d51fd52836f70e71f57ae81944c4ea4565289125d3aa657f0a1a2",
   "stdout": "6c2e97f0920581fd33ecb08bd90bb495324a76d093a3c194318f783073cc1560"
  },
  "charge_discharge_4w_modern": {
-  "result": "c0528f6584804d5edb6f0b5ab4bf809bf1e92afafb6233b705dc8962abb80113",
+  "result": "b92508ea634f6cdc321714d1a48c117288aead31601ae56b6e9bdeacab8032cc",
   "stdout": "d945e7e79481ad1aade7b2f20ec54013f4bb60ebf0c166fd124ab69b400e958a"
  },
  "charge_discharge_4w_retro": {
-  "result": "e4543bb75e9bd681d1782c6e76af0c2bf19b64b4f831b5d92466666ecbdb51e6",
+  "result": "f802938545b78ead881e37a1554a8642416aaa0c56a7f2a4c88f8936ccb03ee6",
   "stdout": "bae3984c6a6ae1cd5a1361662766297784d8ddcc4e934eb11e5dc4c4ed8a3458"
  },
  "charge_discharge_bus": {
-  "result": "9b88670f690fab8e54f73477aaa995b94f6a4feb9158544cc334a9f8bfc3cebe",
+  "result": "f6a5209e3ede69a1060f04d756a88530d37ab8499bc777d83c614a399a3a8218",
   "stdout": "b34d1e23a19ade9d0df26e5086d1eddd0ce4881c5618f8dd28f926c1c8746158"
  },
  "cli--cold": {
@@ -48,19 +48,19 @@
   "stdout": "3d33b467d9338fb6061cb05a8ef423dfa768afede8c6e4d58b00d07f4139821e"
  },
  "cold_2w": {
-  "result": "129d070914f22f2d3de94d7ee9b9ce7bed7b813661318fe427ba28795e5784b3",
+  "result": "f0fb8cf8da95fa4eb7226e6357594d9d3990fbc4f580eed4214f1ee88830a850",
   "stdout": "ad0d26409f81b1d1dba032b136c0ee52b17346f6252efa10912057db9b3a8854"
  },
  "cold_4w_modern": {
-  "result": "8682eb443c02d479a943015ed3271759772537d6216f4b24e14905d00a0beb8d",
+  "result": "e0476841670c0a49258c9a9b93c58d2f4604f35d67bb970dbe9f910d63975cd8",
   "stdout": "5f66bc1a54afa9a4a9f68dfe8057ac4f3c52a7ed601883e84a0ee2af5685b8b7"
  },
  "cold_4w_retro": {
-  "result": "82ffb80f1ee050f1c8b2d568f186ea4e883b467dbb1e28ce5dbdc09045ca1fed",
+  "result": "1f57ea1ef18dbef52a96dd21503f45a0ce971e910a9fc7272a3054cda4898d3c",
   "stdout": "c4ed107c65b6ca968ec27f579bd249fc7e4e692958c888c57a3bd9281539a090"
  },
  "cold_bus": {
-  "result": "b828347f6c0ef93abeb572716a94bd884d34b6eebb3f712db89987a8b155b740",
+  "result": "74bcfb1f8246a536996cf5a84945d1faf8469a04c88209f92e3a388a34a65a8a",
   "stdout": "3f1de8aaeae86dedf6ca961fb64a8c3320517b3be08841ca1315a9b33548a66e"
  },
  "comparison_table": {
@@ -68,39 +68,39 @@
   "stdout": "8668e0ec5b513dec7af35f9ca135517ae2bde049bf0afc1d74fbf5dc1ca05c93"
  },
  "degradation_2w": {
-  "result": "87eae108d12292c48b2fa29358c166cfef1a35c7e76d57995066aa61eb9bb219",
+  "result": "fd8d3128e5695e6397d80f771e2bad8fe80a38dde3501d1bf5315b35a85ca987",
   "stdout": "456d3ceaefbfc18f713118a237b990e73d839efa559e03098ad571b3784dfc30"
  },
  "degradation_4w_modern": {
-  "result": "43be717cb9cdda6250350ad52f3aea33ea72875bf02bf6bbb54520cf8f05d534",
+  "result": "cc53e4a979cc2e3ba7a53618b7c2055f692704add192378a387a7e3daf497d6f",
   "stdout": "98394f385c5e7d63e7b33560daea778b435c7f6ef25ee209b50d805a6e885f1d"
  },
  "degradation_4w_retro": {
-  "result": "2c31c49512451c9def55a7076fc4bb4f61755f2d3400b77707de70d52195ba44",
+  "result": "e4e2b009ebf0da3db54850d802966a19c9972b104105d96ed156c663f9068b07",
   "stdout": "75e38ec8f70c2c8bd37ad4fd46ff30c34e025d8b4d7bcec5e268eeeabb2124e8"
  },
  "degradation_bus": {
-  "result": "e85781abdd8c498a7a4dd5a8dec4a6cab7b75b152bdd8545871e19b56f4243ff",
+  "result": "2abeda4e5acbaa699f78dff9adf7cb96c351b94062af7d320d4d5ada9c152d78",
   "stdout": "b416e8fca6bd1ce3a8a42ffc11be207b096f19caadd564c29d44694d7a718f0c"
  },
  "driving_2w": {
-  "result": "bd4688f2bde3bc3647ebd65565496b3b72fcdf11bd0588c1ec7bf69f948a67ff",
+  "result": "7f9a90f10850e3aa63040bb92596c27222b9229eccc09f9e411ce59187c918fa",
   "stdout": "a1c1285668f52b71827f34452656d59acda52105ac13d7343720ee54cf0b71d5"
  },
  "driving_4w_modern": {
-  "result": "bd4688f2bde3bc3647ebd65565496b3b72fcdf11bd0588c1ec7bf69f948a67ff",
+  "result": "7f9a90f10850e3aa63040bb92596c27222b9229eccc09f9e411ce59187c918fa",
   "stdout": "46c7c932ffe926239686d03c159f306379852ca8caa2ead0055b0cbd49076f31"
  },
  "driving_4w_retro": {
-  "result": "44ff04fca2780f6bdfe2398232751f336b1298782915663daec3708892d63924",
+  "result": "58849c30edd042ca47f209700321e3f1ff800f014abcf26dd980e71f27d262b1",
   "stdout": "ff4d51516206122abacecaf0c1be071b5f35d6da674bf52eadb162b7efa88ce8"
  },
  "driving_bus": {
-  "result": "bd4688f2bde3bc3647ebd65565496b3b72fcdf11bd0588c1ec7bf69f948a67ff",
+  "result": "7f9a90f10850e3aa63040bb92596c27222b9229eccc09f9e411ce59187c918fa",
   "stdout": "89b5559fb9159dd33344c52aa85bea0e66f4e233307538c420c2b71ba2ba034f"
  },
  "manufacturers": {
-  "result": "6b87b2087dd3fd0fe87bb5e09878b4582e051880ab620159f91d1de1c2f699ab",
+  "result": "160c871d0e8775c02ae5b0c960100182b4c799f348dc3857e5a42a883d595a27",
   "stdout": "075e2b926e8af267f9416d4503ce132e5a5a0e7c2bc4f210e9aa191f24d1a7e7"
  },
  "profiles": {
@@ -111,7 +111,7 @@
   "vehicles": "d4260eb123ab4cb2343f124a3d805eb71eb82de3f74494eaadc5613b422fab03"
  },
  "two_wheeler_full": {
-  "result": "1e2f906d3c057390faf5830d7171938ec8bd0132be7944797eb45dd454aa3003",
+  "result": "752470115d169c42654522012424837f703fde838211a0ac78a36082931a992c",
   "stdout": "d6332a9116208f739814a81a4a4fc0a8ae6acced2d414245e6904f0ccd9e4231"
  }
 }

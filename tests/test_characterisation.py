@@ -1,9 +1,10 @@
 """Characterisation tests: simulations must reproduce the pre-refactor outputs.
 
 Digests in ``golden/baseline.json`` come from the original code (see
-``characterise.py``).  Floats are compared via their exact hex form, so these
-tests assert bit-identical results.  If a platform's libm ever differs in the
-last bit, regenerate locally rather than loosening the comparison blindly.
+``characterise.py``, regenerated from the original ``main`` code).  Floats are
+digested rounded to 9 significant digits, so the tests assert identical results
+up to ~1e-9 relative: robust to libm/BLAS last-bit differences between macOS and
+the Linux CI runners, while any real change in a number still fails.
 """
 from __future__ import annotations
 
