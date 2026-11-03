@@ -22,8 +22,8 @@ EKF two-step recursion:
 """
 
 import numpy as np
-from .config import CellConfig, EKFConfig, DEFAULT_CELL, DEFAULT_EKF
-from .cell_model import CellModel, ocv_from_soc
+from .config import CellConfig, EKFConfig, DEFAULT_EKF
+from .cell_model import CellModel
 
 
 class EKFSOCEstimator:

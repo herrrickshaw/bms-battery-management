@@ -26,7 +26,7 @@ Convention: charge current is negative, discharge current is positive.
 
 from enum import Enum, auto
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import List
 
 
 class BMSState(Enum):
@@ -367,6 +367,11 @@ class SupervisoryController:
 
     def _transition(self, new_state: BMSState) -> None:
         self._state = new_state
+
+    def clear_fault(self) -> None:
+        """Clear the latched fault code and return to IDLE (public reset hook)."""
+        self._fault_code = FaultCode.NONE
+        self._transition(BMSState.IDLE)
 
     def _make_output(
         self, *, contactor_main: bool, contactor_pre: bool,

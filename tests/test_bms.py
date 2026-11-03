@@ -12,13 +12,13 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from bms.config import CellConfig, PackConfig, EKFConfig, OCV_SOC_TABLE
+from bms.config import PackConfig
 from bms.cell_model import CellModel, ocv_from_soc, docv_dsoc
 from bms.soc_estimator import EKFSOCEstimator
 from bms.soh_estimator import SOHEstimator
 from bms.cell_balancer import CellBalancer
 from bms.power_limits import PowerLimitsCalculator
-from bms.supervisor import SupervisoryController, BMSState, FaultCode, AlertCode
+from bms.supervisor import SupervisoryController, BMSState, AlertCode
 from bms.bms_controller import BMSController
 from bms.chemistries import (
     LFP, LEAD_ACID, NMC,
@@ -27,7 +27,7 @@ from bms.chemistries import (
 )
 from bms.thermal import FanController, FanFaultCode
 from bms.vehicles import (
-    TWO_WHEELER, FOUR_WHEELER_RETRO, FOUR_WHEELER_MODERN, ELECTRIC_BUS,
+    TWO_WHEELER, FOUR_WHEELER_RETRO, ELECTRIC_BUS,
     make_bms_controller,
 )
 
@@ -143,7 +143,7 @@ class TestSOHEstimator:
         assert result.soh_capacity_pct == pytest.approx(100.0, abs=0.01)
 
     def test_capacity_degrades_with_throughput(self):
-        soh = SOHEstimator(nominal_capacity_ah=100.0, degradation_rate=1e-3)
+        SOHEstimator(nominal_capacity_ah=100.0, degradation_rate=1e-3)
         # Simulate 500 equivalent full cycles worth of throughput
         for _ in range(int(500 * 2 * 100 * 3600)):  # would be too slow — just test math
             pass
@@ -664,7 +664,6 @@ class TestColdTemperature:
     def test_lfp_no_fault_at_minus15c(self):
         """LFP t_min_discharge=-20°C → no fault at -15°C (cell self-heats quickly)."""
         from bms.bms_controller import BMSController
-        from bms.config import PackConfig
         pack_cfg = PackConfig(
             cells_series=15, cells_parallel=1,
             balance_v_threshold=0.015, balance_current_a=0.2,
@@ -685,7 +684,6 @@ class TestColdTemperature:
     def test_solid_state_charge_blocked_at_25c(self):
         """Solid-State NMC t_min_charge=30°C → charge power-limit = 0 at 25°C."""
         from bms.bms_controller import BMSController
-        from bms.config import PackConfig
         pack_cfg = PackConfig(
             cells_series=15, cells_parallel=1,
             balance_v_threshold=0.010, balance_current_a=0.5,
@@ -703,7 +701,6 @@ class TestColdTemperature:
     def test_solid_state_charge_allowed_at_40c(self):
         """Solid-State NMC allows charging at 40°C (above t_min_charge=30°C)."""
         from bms.bms_controller import BMSController
-        from bms.config import PackConfig
         pack_cfg = PackConfig(
             cells_series=15, cells_parallel=1,
             balance_v_threshold=0.010, balance_current_a=0.5,
@@ -721,7 +718,6 @@ class TestColdTemperature:
     def test_na_ion_survives_minus25c_discharge(self):
         """Na-Ion t_min_discharge=-30°C → no UNDER_TEMPERATURE fault at -25°C."""
         from bms.bms_controller import BMSController
-        from bms.config import PackConfig
         pack_cfg = PackConfig(
             cells_series=15, cells_parallel=1,
             balance_v_threshold=0.015, balance_current_a=0.2,

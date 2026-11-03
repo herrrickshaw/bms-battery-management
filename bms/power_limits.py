@@ -10,7 +10,6 @@ Power limits protect the pack from:
 The allowed charge current is negative (convention: discharge positive).
 """
 
-import numpy as np
 from dataclasses import dataclass
 from .config import CellConfig, DEFAULT_CELL
 

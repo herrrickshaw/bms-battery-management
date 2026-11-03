@@ -301,7 +301,7 @@ def print_validation_report(results: Dict[str, Any]) -> None:
     # 1. SOC Estimation
     if "soc_estimation" in results:
         r = results["soc_estimation"]
-        print(f"\n  1. EKF SOC Estimation  (NASA 18650 discharge cycles)")
+        print("\n  1. EKF SOC Estimation  (NASA 18650 discharge cycles)")
         print(f"  {'─'*60}")
         if "error" in r:
             print(f"     ERROR: {r['error']}")
@@ -357,7 +357,7 @@ def print_validation_report(results: Dict[str, Any]) -> None:
     # 5. Distributed BMS
     if "distributed_bms" in results:
         r = results["distributed_bms"]
-        print(f"\n  5. Multi-Module Health Detection  (Distributed BMS)")
+        print("\n  5. Multi-Module Health Detection  (Distributed BMS)")
         print(f"  {'─'*60}")
         print(f"     Degraded modules  : {r['degraded_module_ids']}")
         print(f"     Degraded avg SOH  : {r['degraded_avg_soh_pct']:.1f} %")
@@ -365,7 +365,7 @@ def print_validation_report(results: Dict[str, Any]) -> None:
         print(f"     SOC drop detected : {'YES ✓' if r['soh_detectable'] else 'NO'}")
         print(f"     Degraded alerts   : {r['degraded_alert_count']:,}")
         print(f"     Healthy alerts    : {r['healthy_alert_count']:,}")
-        print(f"\n     Module summary:")
+        print("\n     Module summary:")
         print(f"     {'ModID':>6}  {'SOH%':>6}  {'AvgSOC%':>8}  {'MinSOC%':>8}  "
               f"{'AvgTemp':>8}  {'Alerts':>7}")
         print(f"     {'─'*55}")

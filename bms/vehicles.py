@@ -18,12 +18,16 @@ Usage
     state = bms.step(current=50.0, dt=1.0)
 """
 
-from dataclasses import dataclass, field
-from typing import Optional
-import numpy as np
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace as _dc_replace
+from typing import TYPE_CHECKING
 
 from .config import CellConfig, PackConfig, EKFConfig, DEFAULT_EKF
-from .chemistries import ChemistryProfile, LFP, LEAD_ACID, NMC
+from .chemistries import ChemistryProfile, LFP, LEAD_ACID
+
+if TYPE_CHECKING:  # avoid a runtime import cycle with bms_controller
+    from .bms_controller import BMSController
 
 
 @dataclass
@@ -166,8 +170,12 @@ TWO_WHEELER = VehicleProfile(
 #   130Ah, 10kW BLDC, 3-stage charging, fan at 40°C
 # ---------------------------------------------------------------------------
 
+def with_cell_config(base: ChemistryProfile, cell: CellConfig) -> ChemistryProfile:
+    """Return ``base`` unchanged except for its CellConfig (all other fields shared)."""
+    return _dc_replace(base, cell_config=cell)
+
+
 # Override lead-acid cell config with paper-specific current limits
-from dataclasses import replace as _dc_replace
 
 _PBA_4W_CELL = _dc_replace(
     LEAD_ACID.cell_config,
@@ -178,18 +186,7 @@ _PBA_4W_CELL = _dc_replace(
     i_cv_term=-1.0,
 )
 
-from .chemistries import ChemistryProfile as _CP
-
-_LEAD_ACID_4W = _CP(
-    name=LEAD_ACID.name,
-    symbol=LEAD_ACID.symbol,
-    ocv_table=LEAD_ACID.ocv_table,
-    cell_config=_PBA_4W_CELL,
-    self_discharge_pct_month=LEAD_ACID.self_discharge_pct_month,
-    charge_efficiency=LEAD_ACID.charge_efficiency,
-    float_voltage_v=LEAD_ACID.float_voltage_v,
-    description=LEAD_ACID.description,
-)
+_LEAD_ACID_4W = with_cell_config(LEAD_ACID, _PBA_4W_CELL)
 
 FOUR_WHEELER_RETRO = VehicleProfile(
     name="Retrofit EV Car — Lead-Acid (72V / 130Ah)",
@@ -232,15 +229,7 @@ _LFP_4W_CELL = _dc_replace(
     i_cv_term=-3.0,
 )
 
-_LFP_4W_CHEM = _CP(
-    name=LFP.name, symbol=LFP.symbol,
-    ocv_table=LFP.ocv_table,
-    cell_config=_LFP_4W_CELL,
-    self_discharge_pct_month=LFP.self_discharge_pct_month,
-    charge_efficiency=LFP.charge_efficiency,
-    float_voltage_v=LFP.float_voltage_v,
-    description=LFP.description,
-)
+_LFP_4W_CHEM = with_cell_config(LFP, _LFP_4W_CELL)
 
 FOUR_WHEELER_MODERN = VehicleProfile(
     name="Modern Compact EV (102.4V LFP)",
@@ -289,15 +278,7 @@ _LFP_BUS_CELL = _dc_replace(
     thermal_resistance_k_w=0.3,  # liquid cooling: low R keeps cell below 55°C
 )
 
-_LFP_BUS_CHEM = _CP(
-    name=LFP.name, symbol=LFP.symbol,
-    ocv_table=LFP.ocv_table,
-    cell_config=_LFP_BUS_CELL,
-    self_discharge_pct_month=LFP.self_discharge_pct_month,
-    charge_efficiency=LFP.charge_efficiency,
-    float_voltage_v=LFP.float_voltage_v,
-    description=LFP.description,
-)
+_LFP_BUS_CHEM = with_cell_config(LFP, _LFP_BUS_CELL)
 
 ELECTRIC_BUS = VehicleProfile(
     name="Electric City Bus (409.6V LFP)",
@@ -336,7 +317,11 @@ VEHICLE_REGISTRY = {
 }
 
 
-def make_bms_controller(profile: VehicleProfile, soc_init=0.50, ambient_temp_c: float = 25.0):
+def make_bms_controller(
+    profile: VehicleProfile,
+    soc_init: float | list[float] = 0.50,
+    ambient_temp_c: float = 25.0,
+) -> "BMSController":
     """
     Instantiate a BMSController configured for the given vehicle profile.
 
