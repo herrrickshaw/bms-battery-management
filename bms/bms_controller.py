@@ -192,31 +192,13 @@ class BMSController:
         """
         self._time += dt
 
-        # Step each cell model; add bypass current for cells being balanced
-        cell_states = []
-        for i, (cell, ekf) in enumerate(zip(self._cells, self._ekf)):
-            bypass_i = self._balancer.effective_current(i)
-            effective_i = current + bypass_i
-            state = cell.step(effective_i, dt, self._ambient)
-            cell_states.append(state)
-
-        # Collect cell voltages and temperatures
-        v_cells = [s.v_terminal for s in cell_states]
-        t_cells = [s.temperature for s in cell_states]
-
-        # EKF SOC estimation
-        soc_estimates = [
-            ekf.update(current, v, dt)
-            for ekf, v in zip(self._ekf, v_cells)
-        ]
+        v_cells, t_cells = self._step_cells(current, dt)
+        soc_estimates = self._estimate_soc(current, v_cells, dt)
 
         # Pack-level aggregates
         pack_voltage = sum(v_cells)
         pack_soc_mean = float(np.mean(soc_estimates))
-        pack_soc_min = float(np.min(soc_estimates))
-        pack_soc_max = float(np.max(soc_estimates))
         t_max = float(np.max(t_cells))
-        t_min = float(np.min(t_cells))
 
         # SOH estimation (uses weakest cell = min voltage)
         soh_state = self._soh.update(current, float(np.min(v_cells)), dt)
@@ -251,6 +233,33 @@ class BMSController:
         # Thermal management / fan controller
         thermal_state = self._fan.update(temperature=t_max)
 
+        return self._build_pack_state(
+            current, v_cells, t_cells, soc_estimates, soh_state, bal_state, limits, sv_out, thermal_state,
+        )
+
+    def _step_cells(self, current: float, dt: float):
+        """Step every cell model (balancing bypass current added); return (v_cells, t_cells)."""
+        cell_states = []
+        for i, (cell, ekf) in enumerate(zip(self._cells, self._ekf)):
+            bypass_i = self._balancer.effective_current(i)
+            effective_i = current + bypass_i
+            state = cell.step(effective_i, dt, self._ambient)
+            cell_states.append(state)
+        return [s.v_terminal for s in cell_states], [s.temperature for s in cell_states]
+
+    def _estimate_soc(self, current: float, v_cells, dt: float):
+        """Run one EKF update per cell; return the per-cell SOC estimates."""
+        return [ekf.update(current, v, dt) for ekf, v in zip(self._ekf, v_cells)]
+
+    def _build_pack_state(self, current, v_cells, t_cells, soc_estimates, soh_state, bal_state,
+                          limits, sv_out, thermal_state) -> BMSPackState:
+        """Assemble the rounded BMSPackState snapshot for this step."""
+        pack_voltage = sum(v_cells)
+        pack_soc_mean = float(np.mean(soc_estimates))
+        pack_soc_min = float(np.min(soc_estimates))
+        pack_soc_max = float(np.max(soc_estimates))
+        t_max = float(np.max(t_cells))
+        t_min = float(np.min(t_cells))
         fault_active = sv_out.fault_code.value != 0
         return BMSPackState(
             timestamp_s=self._time,

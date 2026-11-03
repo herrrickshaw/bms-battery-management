@@ -36,42 +36,20 @@ def manufacturer_ageing(
     return stress, efcs, loss, eol_m
 
 
-def simulate_manufacturer_comparison(
-    base_rate_per_efc: float = 1e-4,
-    calendar_aging_pct_year: float = 0.5,
-    simulation_years: int = 8,
-) -> dict:
-    """
-    Side-by-side BMS and degradation comparison for Ather, Ola, Tesla, and BYD.
+_VEHICLES = {
+    "Ather 450X":  (ATHER_450X,      ATHER_DRIVING),
+    "Ola S1 Pro":  (OLA_S1_PRO,       OLA_DRIVING),
+    "Tesla M3 SR": (TESLA_MODEL3_SR,  TESLA_DRIVING),
+    "BYD Han EV":  (BYD_HAN_EV,      BYD_DRIVING),
+}
 
-    Uses manufacturer-specific driving conditions that reflect each vehicle's
-    target market, typical usage pattern, and cooling system capability.
 
-    Parameters
-    ----------
-    base_rate_per_efc : float
-        Base degradation rate at reference conditions (1C, 25°C, 100% DoD).
-    calendar_aging_pct_year : float
-        Calendar SOH loss [%/yr].
-    simulation_years : int
-        Projection horizon [years].
-
-    Returns
-    -------
-    dict keyed by short name → {profile, driving_cond, soh_by_year, eol_months}.
-    """
-    vehicles = {
-        "Ather 450X":  (ATHER_450X,      ATHER_DRIVING),
-        "Ola S1 Pro":  (OLA_S1_PRO,       OLA_DRIVING),
-        "Tesla M3 SR": (TESLA_MODEL3_SR,  TESLA_DRIVING),
-        "BYD Han EV":  (BYD_HAN_EV,      BYD_DRIVING),
-    }
-
+def _print_pack_specs(vehicles: dict) -> None:
+    """Print the title banner and the pack-spec table."""
     print(f"\n{'='*90}")
     print("  MANUFACTURER BMS COMPARISON — Ather · Ola Electric · Tesla · BYD")
     print(f"{'='*90}")
 
-    # ---- Pack specs ----------------------------------------------------------
     headers = ["Vehicle", "Chemistry", "Pack", "Voltage", "Energy", "Motor", "Cooling", "Charge"]
     rows = []
     for name, (vp, _) in vehicles.items():
@@ -92,7 +70,10 @@ def simulate_manufacturer_comparison(
     for r in rows:
         print(fmt.format(*r))
 
-    # ---- Driving-conditions stress -------------------------------------------
+
+def _print_driving_stress(vehicles: dict, base_rate_per_efc: float,
+                          calendar_aging_pct_year: float) -> dict:
+    """Print the driving-stress table; return per-vehicle results (empty SOH series)."""
     print(f"\n  Typical driving conditions & degradation stress (base_rate={base_rate_per_efc*100:.4f}%/EFC):")
     h2 = ["Vehicle", "Driving scenario", "C-dis", "T_pack", "DoD%", "FC%", "Stress×", "EFC/yr", "EOL(yr)"]
     w2 = [14, 32, 7, 7, 6, 5, 9, 8, 9]
@@ -117,8 +98,12 @@ def simulate_manufacturer_comparison(
             "eol_months": eol_m,
             "soh_by_year": [],
         }
+    return results
 
-    # ---- SOH over time -------------------------------------------------------
+
+def _print_soh_projection(vehicles: dict, results: dict, base_rate_per_efc: float,
+                          calendar_aging_pct_year: float, simulation_years: int) -> None:
+    """Print projected SOH per year and append (year, soh) points to ``results``."""
     print(f"\n  Projected SOH (%) over {simulation_years} years:")
     col = 13
     header_row = f"  {'Year':>6}" + "".join(f"  {n:>{col}}" for n in vehicles)
@@ -137,6 +122,9 @@ def simulate_manufacturer_comparison(
             row += f"  {cell:>{col}}"
         print(row)
 
+
+def _print_differentiators() -> None:
+    """Print the legend and the per-manufacturer notes."""
     print("\n  ~ = SOH below warning threshold   ! = below critical threshold")
     print("\n  Key BMS differentiators:")
     print("    Ather 450X  : Cloud-connected ADS; warp/eco modes; air-cooled (hot pack)")
@@ -144,4 +132,34 @@ def simulate_manufacturer_comparison(
     print("    Tesla M3 SR : Octovalve thermal; Supercharger V3 (2.8C); trip planning")
     print("    BYD Han EV  : Cell-to-Body (CTB); nail-test safe; 120 kW DC; heat pump\n")
 
+
+def simulate_manufacturer_comparison(
+    base_rate_per_efc: float = 1e-4,
+    calendar_aging_pct_year: float = 0.5,
+    simulation_years: int = 8,
+) -> dict:
+    """
+    Side-by-side BMS and degradation comparison for Ather, Ola, Tesla, and BYD.
+
+    Uses manufacturer-specific driving conditions that reflect each vehicle's
+    target market, typical usage pattern, and cooling system capability.
+
+    Parameters
+    ----------
+    base_rate_per_efc : float
+        Base degradation rate at reference conditions (1C, 25°C, 100% DoD).
+    calendar_aging_pct_year : float
+        Calendar SOH loss [%/yr].
+    simulation_years : int
+        Projection horizon [years].
+
+    Returns
+    -------
+    dict keyed by short name → {profile, driving_cond, soh_by_year, eol_months}.
+    """
+    vehicles = _VEHICLES
+    _print_pack_specs(vehicles)
+    results = _print_driving_stress(vehicles, base_rate_per_efc, calendar_aging_pct_year)
+    _print_soh_projection(vehicles, results, base_rate_per_efc, calendar_aging_pct_year, simulation_years)
+    _print_differentiators()
     return results

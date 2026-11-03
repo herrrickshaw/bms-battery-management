@@ -55,6 +55,100 @@ def linear_soh_pct(annual_loss_pct: float, year: float) -> float:
     return max(0.0, 100.0 - annual_loss_pct * year)
 
 
+_STRESS_HEADERS = ["Profile", "C-dis", "T(°C)", "DoD%", "FC%", "StressX", "EFC/yr", "EOL(yr)"]
+_STRESS_WIDTHS = [24, 7, 7, 6, 5, 9, 8, 9]
+
+
+def _print_driving_banner(profile: VehicleProfile, base_rate_per_efc: float,
+                          calendar_aging_pct_year: float, warn_pct: float) -> None:
+    """Print the title block (pack name, chemistry, model parameters)."""
+    print(f"\n{'='*86}")
+    print(f"  DRIVING CONDITIONS DEGRADATION — {profile.name}")
+    print(f"  Chemistry: {profile.chemistry.symbol}  |  "
+          f"base_rate={base_rate_per_efc*100:.4f}%/EFC  |  "
+          f"calendar_aging={calendar_aging_pct_year}%/yr  |  "
+          f"EOL threshold: SOH={warn_pct}%")
+    print(f"{'='*86}")
+
+
+def _print_stress_table(rows: Sequence[DrivingStressRow]) -> dict:
+    """Print the per-profile stress table; return the (still empty-series) results dict."""
+    fmt = "  " + "  ".join(f"{{:<{x}}}" for x in _STRESS_WIDTHS)
+    print(fmt.format(*_STRESS_HEADERS))
+    print("  " + "-" * 84)
+
+    results = {}
+    for row in rows:
+        cond = row.cond
+        eol_str = f"{row.eol_months/12:.1f}" if row.eol_months < 120 * 12 else "Never"
+        print(fmt.format(
+            cond.name[:24],
+            f"{cond.avg_discharge_c_rate:.2f}",
+            f"{cond.avg_pack_temp_c:.0f}",
+            f"{cond.dod_per_trip*100:.0f}%",
+            f"{cond.fast_charge_fraction*100:.0f}%",
+            f"{row.stress_total:.3f}×",
+            f"{row.efc_per_year:.0f}",
+            eol_str,
+        ))
+        results[cond.name] = {"annual_loss_pct": row.annual_loss_pct, "eol_months": row.eol_months,
+                              "soh_by_year": []}
+    return results
+
+
+def _soh_marker(soh: float, warn_pct: float, crit_pct: float) -> str:
+    """'!' below critical, '~' below warning, else empty."""
+    if soh < crit_pct:
+        return "!"
+    if soh < warn_pct:
+        return "~"
+    return ""
+
+
+def _print_soh_over_time(conditions_list, results: dict, simulation_years: int,
+                         print_every_years: int, warn_pct: float, crit_pct: float) -> None:
+    """Print the SOH-over-time table and append (year, soh) points to ``results``."""
+    print()
+    months_steps = [m for m in range(0, simulation_years * 12 + 1,
+                                     max(1, print_every_years * 12))]
+
+    name_width = 6  # "Year"
+    col_width = 10
+    header_row = f"  {'Year':>{name_width}}" + "".join(
+        f"  {c.name[:col_width]:>{col_width}}" for c in conditions_list
+    )
+    print(header_row)
+    print("  " + "-" * (name_width + (col_width + 2) * len(conditions_list) + 2))
+
+    for month in months_steps:
+        year = month / 12
+        row = f"  {year:>{name_width}.1f}"
+        for cond in conditions_list:
+            soh = linear_soh_pct(results[cond.name]["annual_loss_pct"], year)
+            results[cond.name]["soh_by_year"].append((year, round(soh, 1)))
+            cell = f"{soh:.1f}{_soh_marker(soh, warn_pct, crit_pct)}"
+            row += f"  {cell:>{col_width}}"
+        print(row)
+
+
+def _print_stress_explanation(warn_pct: float, crit_pct: float, calendar_aging_pct_year: float) -> None:
+    """Print the legend and the stress-model explanation text."""
+    print(f"\n  Legend: ~ = SOH below warning ({warn_pct}%)   ! = SOH below critical ({crit_pct}%)")
+    print(f"""
+  Stress model (per profile):
+    f_C   = (√C_discharge + √C_charge_blend) / 2   [C-rate damage]
+    f_T   = 1.5^((T−25)/10) if T≥25°C; 1+0.03×(25−T) if T<25°C  [Arrhenius]
+    f_DoD = DoD²                                    [volume-change fatigue]
+    eff_rate/EFC = base_rate × f_C × f_T × f_DoD
+    annual_loss  = eff_rate × EFC/yr × 100%  +  {calendar_aging_pct_year}% calendar
+
+  Interpretation:
+    Aggressive driving degrades the pack faster on all three axes simultaneously:
+    high C-rate + hot pack + deep DoD. The cold-climate profile shows that
+    sub-zero temperatures add a lithium-plating penalty even at modest C-rates.
+""")
+
+
 def simulate_driving_degradation(
     profile: VehicleProfile,
     conditions_list=None,
@@ -98,82 +192,10 @@ def simulate_driving_degradation(
     warn_pct = profile.pack_cfg.soh_warning_pct
     crit_pct = profile.pack_cfg.soh_critical_pct
 
-    print(f"\n{'='*86}")
-    print(f"  DRIVING CONDITIONS DEGRADATION — {profile.name}")
-    print(f"  Chemistry: {profile.chemistry.symbol}  |  "
-          f"base_rate={base_rate_per_efc*100:.4f}%/EFC  |  "
-          f"calendar_aging={calendar_aging_pct_year}%/yr  |  "
-          f"EOL threshold: SOH={warn_pct}%")
-    print(f"{'='*86}")
-
-    # ---- Profile summary table -------------------------------------------
-    h = ["Profile", "C-dis", "T(°C)", "DoD%", "FC%", "StressX", "EFC/yr", "EOL(yr)"]
-    w = [24, 7, 7, 6, 5, 9, 8, 9]
-    fmt = "  " + "  ".join(f"{{:<{x}}}" for x in w)
-    print(fmt.format(*h))
-    print("  " + "-" * 84)
-
-    results = {}
-    for row in driving_stress_rows(conditions_list, warn_pct, base_rate_per_efc, calendar_aging_pct_year):
-        cond = row.cond
-        eol_str = f"{row.eol_months/12:.1f}" if row.eol_months < 120 * 12 else "Never"
-        print(fmt.format(
-            cond.name[:24],
-            f"{cond.avg_discharge_c_rate:.2f}",
-            f"{cond.avg_pack_temp_c:.0f}",
-            f"{cond.dod_per_trip*100:.0f}%",
-            f"{cond.fast_charge_fraction*100:.0f}%",
-            f"{row.stress_total:.3f}×",
-            f"{row.efc_per_year:.0f}",
-            eol_str,
-        ))
-        results[cond.name] = {"annual_loss_pct": row.annual_loss_pct, "eol_months": row.eol_months,
-                              "soh_by_year": []}
-
-    # ---- SOH-over-time table ---------------------------------------------
-    print()
-    months_steps = [m for m in range(0, simulation_years * 12 + 1,
-                                     max(1, print_every_years * 12))]
-
-    # Header row
-    name_width = 6  # "Year"
-    col_width = 10
-    header_row = f"  {'Year':>{name_width}}" + "".join(
-        f"  {c.name[:col_width]:>{col_width}}" for c in conditions_list
-    )
-    print(header_row)
-    print("  " + "-" * (name_width + (col_width + 2) * len(conditions_list) + 2))
-
-    for month in months_steps:
-        year = month / 12
-        row = f"  {year:>{name_width}.1f}"
-        for cond in conditions_list:
-            soh = linear_soh_pct(results[cond.name]["annual_loss_pct"], year)
-            results[cond.name]["soh_by_year"].append((year, round(soh, 1)))
-            marker = ""
-            if soh < crit_pct:
-                marker = "!"    # critical
-            elif soh < warn_pct:
-                marker = "~"    # warning
-            cell = f"{soh:.1f}{marker}"
-            row += f"  {cell:>{col_width}}"
-        print(row)
-
-    print(f"\n  Legend: ~ = SOH below warning ({warn_pct}%)   ! = SOH below critical ({crit_pct}%)")
-
-    # ---- Stress factor explanation ----------------------------------------
-    print(f"""
-  Stress model (per profile):
-    f_C   = (√C_discharge + √C_charge_blend) / 2   [C-rate damage]
-    f_T   = 1.5^((T−25)/10) if T≥25°C; 1+0.03×(25−T) if T<25°C  [Arrhenius]
-    f_DoD = DoD²                                    [volume-change fatigue]
-    eff_rate/EFC = base_rate × f_C × f_T × f_DoD
-    annual_loss  = eff_rate × EFC/yr × 100%  +  {calendar_aging_pct_year}% calendar
-
-  Interpretation:
-    Aggressive driving degrades the pack faster on all three axes simultaneously:
-    high C-rate + hot pack + deep DoD. The cold-climate profile shows that
-    sub-zero temperatures add a lithium-plating penalty even at modest C-rates.
-""")
+    _print_driving_banner(profile, base_rate_per_efc, calendar_aging_pct_year, warn_pct)
+    rows = driving_stress_rows(conditions_list, warn_pct, base_rate_per_efc, calendar_aging_pct_year)
+    results = _print_stress_table(rows)
+    _print_soh_over_time(conditions_list, results, simulation_years, print_every_years, warn_pct, crit_pct)
+    _print_stress_explanation(warn_pct, crit_pct, calendar_aging_pct_year)
 
     return results
