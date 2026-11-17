@@ -20,11 +20,9 @@ Lyten/NMC:  degradation dataset statistics from programmer3 Kaggle page.
 
 import numpy as np
 import pandas as pd
-from typing import Optional
 
 from ..chemistries import NMC, LFP
 from ..cell_model import CellModel
-from ..config import CellConfig
 from dataclasses import replace as _dc_replace
 
 # ---------------------------------------------------------------------------

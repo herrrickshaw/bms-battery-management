@@ -20,7 +20,7 @@ Discrete-time state equations (ZOH exact):
 """
 
 import numpy as np
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 from .config import CellConfig, OCV_SOC_TABLE, DEFAULT_CELL
 
