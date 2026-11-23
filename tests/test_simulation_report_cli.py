@@ -389,3 +389,32 @@ class TestPhasesAndConstants:
         assert seen[1] == pytest.approx(10.0 * 2.718281828 ** (-1 / 1200.0), rel=1e-6)
         assert all(a > b for a, b in zip(seen, seen[1:]))
         assert seen[-1] >= 1.0 > 10.0 * 2.718281828 ** (-t / 1200.0)
+
+    def test_charge_phase_stops_at_exactly_95_percent(self, monkeypatch):
+        monkeypatch.setattr(charge_discharge, "_row", lambda *a: None)
+        cfg = SimpleNamespace(i_max_charge=10.0, i_cv_term=-1.0, v_max=4.0)
+        profile = SimpleNamespace(cell_config=cfg, n_cells_parallel=1)
+        seen = []
+
+        class FakeBms:
+            def step(self, current, dt, charge_requested):
+                seen.append(current)
+                return SimpleNamespace(cell_voltages_v=[3.0], pack_soc_mean=0.95)
+
+        charge_discharge._charge_phase(FakeBms(), profile, [], 1.0, 50, 10**9)
+        assert len(seen) == 1                       # SOC >= 0.95 (inclusive) ends the phase at once
+
+    def test_cv_taper_termination_is_strict(self, monkeypatch):
+        monkeypatch.setattr(charge_discharge, "_row", lambda *a: None)
+        # dt=0 keeps the taper factor at exactly 1.0, so the CV current equals the termination current
+        cfg = SimpleNamespace(i_max_charge=5.0, i_cv_term=-5.0, v_max=4.0)
+        profile = SimpleNamespace(cell_config=cfg, n_cells_parallel=1)
+        seen = []
+
+        class FakeBms:
+            def step(self, current, dt, charge_requested):
+                seen.append(current)
+                return SimpleNamespace(cell_voltages_v=[4.0], pack_soc_mean=0.1)
+
+        charge_discharge._charge_phase(FakeBms(), profile, [], 0.0, 5, 10**9)
+        assert len(seen) == 5                       # |I| == I_term is not "below" it: no early exit
